@@ -21,13 +21,9 @@ wheels/
 *.egg
 
 # Virtual Environment
-.env
-.venv
-env/
 venv/
+env/
 ENV/
-env.bak/
-venv.bak/
 
 # IDE
 .idea/
@@ -39,17 +35,15 @@ venv.bak/
 *.log
 logs/
 
-# Database
+# Local development
+.env
+.env.local
 *.db
-*.sqlite3
+config/db_password.*
+logs/
+
+# Redis
+dump.rdb
 
 # System
 .DS_Store
-Thumbs.db
-
-# Project specific
-/etc/parallama/db_password
-/etc/parallama/config.yaml
-.coverage
-htmlcov/
-.pytest_cache/

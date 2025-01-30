@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parallama"
+version = "0.1.0"
+description = "Multi-user authentication and access management service for Ollama"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.4.2",
+    "sqlalchemy>=2.0.23",
+    "psycopg2-binary>=2.9.9",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "redis>=5.0.1",
+    "httpx>=0.25.1",
+    "python-multipart>=0.0.6",
+    "pyyaml>=6.0.1",
+]
+
+[project.scripts]
+parallama-cli = "parallama.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["parallama*"]

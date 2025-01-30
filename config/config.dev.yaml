@@ -1,0 +1,26 @@
+server:
+  host: 0.0.0.0
+  port: 8000
+  workers: 4
+
+database:
+  host: localhost
+  port: 5432
+  name: parallama_dev
+  user: parallama
+  password_file: config/db_password.dev
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+
+ollama:
+  host: http://localhost
+  port: 11434
+
+logging:
+  level: DEBUG
+  dir: logs
+  max_size: 100M
+  backup_count: 5
