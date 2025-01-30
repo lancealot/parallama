@@ -30,20 +30,48 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.project
+.pydevproject
+.settings/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+
+# Distribution
+*.spec
+*.rpm
+*.deb
 
 # Logs
 *.log
 logs/
 
-# Local development
+# Environment variables
 .env
-.env.local
+.env.*
+
+# Database
 *.db
-config/db_password.*
-logs/
+*.sqlite3
 
 # Redis
 dump.rdb
 
-# System
+# Temporary files
+*.tmp
+*.bak
+*~
+
+# System files
 .DS_Store
+Thumbs.db
+
+# Project-specific
+/etc/parallama/jwt_secret
+/etc/parallama/db_password
+/var/log/parallama/

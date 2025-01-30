@@ -16,10 +16,20 @@ Parallama is a multi-user authentication and access management service for Ollam
 
 ### Authentication & Security
 - JWT-based authentication with refresh tokens
+  - Automatic token rotation
+  - Token reuse detection
+  - Rate limiting
+  - Chain revocation
 - API key management with automatic rotation
-- Role-based access control (admin, premium, basic)
+- Role-based access control (RBAC)
+  - Flexible permission system
+  - Role hierarchy (admin, premium, basic)
+  - Per-gateway permissions
+  - Role expiration support
+  - Comprehensive test coverage
 - Secure password and token handling
 - Gateway-specific security headers
+- Comprehensive test coverage for all security features
 
 ### Core Features
 - REST API for authenticated access to Ollama services

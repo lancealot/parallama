@@ -119,10 +119,86 @@ Request:
 Response:
 {
     "access_token": "eyJ...",
+    "refresh_token": "rt_...",  # New rotated token
     "token_type": "bearer",
     "expires_in": 1800
 }
 ```
+
+#### Create API Key
+```
+POST /auth/keys
+Request:
+{
+    "description": "Optional key description"
+}
+
+Response:
+{
+    "key": "pk_live_...",
+    "id": "uuid",
+    "description": "Optional key description",
+    "created_at": "2024-01-30T16:45:00Z"
+}
+```
+
+#### List API Keys
+```
+GET /auth/keys
+
+Response:
+{
+    "keys": [
+        {
+            "id": "uuid",
+            "description": "Optional key description",
+            "created_at": "2024-01-30T16:45:00Z",
+            "last_used_at": "2024-01-30T16:46:00Z",
+            "revoked_at": null
+        }
+    ]
+}
+```
+
+#### Revoke API Key
+```
+DELETE /auth/keys/{key_id}
+
+Response:
+{
+    "status": "success",
+    "message": "API key revoked"
+}
+```
+
+The refresh token system implements a comprehensive security model:
+- Automatic token rotation:
+  * Each refresh operation returns a new refresh token
+  * Previous refresh tokens are automatically revoked
+  * Chain revocation on security events
+- Token reuse detection:
+  * Immediate detection of token reuse attempts
+  * Automatic revocation of entire token chain
+  * Configurable reuse detection window
+- Rate limiting:
+  * Per-token rate limiting
+  * Configurable attempt limits
+  * Automatic cleanup of rate limit data
+
+Rate limiting configuration:
+```yaml
+authentication:
+  refresh_token_rate_limit: 5  # Maximum refresh attempts per minute
+  refresh_token_reuse_window: 60  # Seconds to detect token reuse
+  refresh_token_cleanup_interval: 3600  # Cleanup interval in seconds
+```
+
+Security features have been thoroughly tested with comprehensive test coverage:
+- Token lifecycle tests
+- Expiration and validation tests
+- Rate limiting tests
+- Reuse detection tests
+- Chain revocation tests
 
 ### Ollama Native API
 
@@ -540,6 +616,10 @@ Rate limits can be configured per user and per gateway:
 - Request limits (hourly and daily)
 - Different limits for different gateways
 - Role-based limit templates
+- Authentication rate limits:
+  - Refresh token attempts (per minute)
+  - Login attempts (per minute)
+  - Token reuse detection window
 
 ### Authentication
 JWT configuration options:

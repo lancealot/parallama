@@ -8,12 +8,15 @@
 
 ## Phase 2: Core API Development
 - [x] FastAPI application setup
+- [x] Authentication Service Core
+  - [x] JWT token generation and validation
+  - [x] Password hashing with bcrypt
+  - [x] Refresh token system with rotation and reuse detection
+  - [x] Comprehensive test coverage
 - [ ] Authentication middleware
-  - JWT token generation and validation
-  - Password hashing with bcrypt
-  - API key management
-  - Role-based access control
-  - Refresh token system
+  - [x] API key management
+  - [x] Role-based access control
+  - [ ] Middleware implementation
 
 ## Phase 2.5: API Gateway Implementation
 - [ ] Gateway Architecture Setup
