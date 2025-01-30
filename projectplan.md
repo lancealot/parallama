@@ -9,6 +9,29 @@
 ## Phase 2: Core API Development
 - [x] FastAPI application setup
 - [ ] Authentication middleware
+  - JWT token generation and validation
+  - Password hashing with bcrypt
+  - API key management
+  - Role-based access control
+  - Refresh token system
+
+## Phase 2.5: API Gateway Implementation
+- [ ] Gateway Architecture Setup
+  - Base gateway interface
+  - Gateway router and registry
+  - Discovery endpoint
+  - Status monitoring
+- [ ] Gateway Implementations
+  - Ollama native gateway (/ollama/v1)
+  - OpenAI compatibility gateway (/openai/v1)
+  - Future gateway support preparation
+- [ ] Gateway-specific Features
+  - Per-gateway rate limiting
+  - Model mapping configuration
+  - Response transformation
+  - Usage tracking
+
+## Phase 2.6: API Integration
 - [ ] Ollama API integration
 - [ ] Rate limiting implementation
 - [ ] Usage tracking
@@ -51,6 +74,9 @@
 CREATE TABLE users (
     id UUID PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(50) DEFAULT 'basic',
+    is_admin BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -60,39 +86,100 @@ CREATE TABLE api_keys (
     user_id UUID REFERENCES users(id),
     key_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    revoked_at TIMESTAMP WITH TIME ZONE
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    last_used_at TIMESTAMP WITH TIME ZONE
 );
 
--- Rate Limits table
-CREATE TABLE rate_limits (
-    user_id UUID PRIMARY KEY REFERENCES users(id),
+-- Refresh Tokens table
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    token_hash VARCHAR(255) NOT NULL,
+    issued_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    replaced_by UUID REFERENCES refresh_tokens(id)
+);
+
+-- Gateway Rate Limits table
+CREATE TABLE gateway_rate_limits (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    gateway_type VARCHAR(50) NOT NULL,
     token_limit_hourly INTEGER,
     token_limit_daily INTEGER,
     request_limit_hourly INTEGER,
     request_limit_daily INTEGER,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, gateway_type)
 );
 
--- Usage Logs table
-CREATE TABLE usage_logs (
+-- Gateway Usage Logs table
+CREATE TABLE gateway_usage_logs (
     id UUID PRIMARY KEY,
     user_id UUID REFERENCES users(id),
+    gateway_type VARCHAR(50) NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     endpoint VARCHAR(255) NOT NULL,
     model_name VARCHAR(255),
     tokens_used INTEGER,
     request_duration FLOAT,
-    status_code INTEGER
+    status_code INTEGER,
+    error_message TEXT
+);
+
+-- Model Mappings table
+CREATE TABLE model_mappings (
+    id UUID PRIMARY KEY,
+    gateway_type VARCHAR(50) NOT NULL,
+    external_model VARCHAR(255) NOT NULL,
+    internal_model VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(gateway_type, external_model)
 );
 ```
 
 ### API Components
-- Authentication Middleware
-- Rate Limiting Middleware
-- Token Counting Service
-- Usage Tracking Service
-- Model Management Service
+
+#### Core Components
+- Authentication Service
+  - JWT token management
+  - Password hashing
+  - API key management
+  - Refresh token handling
 - User Management Service
+  - User CRUD operations
+  - Role management
+  - Permission checking
+- Rate Limiting Service
+  - Per-gateway rate limiting
+  - Token counting
+  - Request tracking
+
+#### Gateway Components
+- Gateway Registry Service
+  - Gateway registration
+  - Status monitoring
+  - Discovery endpoint
+- Gateway Router
+  - Request routing
+  - Authentication validation
+  - Error handling
+- Gateway Implementations
+  - Base gateway interface
+  - Protocol-specific transformers
+  - Response formatters
+
+#### Integration Services
+- Ollama Integration Service
+  - Model management
+  - Request handling
+  - Response processing
+- Usage Tracking Service
+  - Per-gateway usage logging
+  - Analytics processing
+  - Report generation
 
 ### System Requirements
 - Python 3.9+
@@ -121,9 +208,34 @@ redis:
   port: 6379
   db: 0
 
-ollama:
-  host: http://localhost
-  port: 11434
+authentication:
+  jwt_secret_key_file: /etc/parallama/jwt_secret
+  access_token_expire_minutes: 30
+  refresh_token_expire_days: 30
+  password_hash_rounds: 12
+
+api_gateways:
+  enabled:
+    - ollama
+    - openai
+  
+  discovery:
+    enabled: true
+    cache_ttl: 300
+    include_metrics: true
+  
+  ollama:
+    host: http://localhost
+    port: 11434
+    base_path: /ollama/v1
+    default_model: llama2
+  
+  openai:
+    base_path: /openai/v1
+    compatibility_mode: true
+    model_mappings:
+      gpt-3.5-turbo: llama2
+      gpt-4: llama2:70b
 
 logging:
   level: INFO
@@ -135,12 +247,35 @@ logging:
 ## Implementation Notes
 
 ### Security Considerations
-- API keys must be securely hashed before storage
-- All database passwords stored in separate files
-- Rate limiting to prevent abuse
+
+#### Authentication Security
+- API keys and passwords securely hashed using bcrypt
+- JWT tokens signed with RS256 algorithm
+- Refresh tokens with automatic rotation
+- Token blacklisting for revoked tokens
+- Secure token storage guidelines
+
+#### API Gateway Security
+- Per-gateway rate limiting
+- Request validation per gateway type
+- Model access control
+- Error message sanitization
+- Gateway-specific security headers
+
+#### System Security
+- All sensitive credentials in separate files
+- Database connection pooling
+- Redis security configuration
 - Input validation on all endpoints
-- Secure headers middleware
 - Regular security audits
+- Automated vulnerability scanning
+
+#### Operational Security
+- Gateway status monitoring
+- Error rate alerting
+- Access log analysis
+- Regular token cleanup
+- Automated backup system
 
 ### Performance Optimization
 - Connection pooling for database
