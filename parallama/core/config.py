@@ -1,10 +1,39 @@
 """Configuration management for Parallama."""
 
 import os
+from datetime import timedelta
 from typing import Optional
 
 import yaml
+from pathlib import Path
 from pydantic import BaseModel, Field
+
+
+class AuthConfig(BaseModel):
+    """Authentication configuration settings."""
+    jwt_secret_key_file: str = Field(default="/etc/parallama/jwt_secret")
+    access_token_expire_minutes: int = Field(default=30)
+    refresh_token_expire_days: int = Field(default=30)
+    password_hash_rounds: int = Field(default=12)
+
+    @property
+    def jwt_secret_key(self) -> str:
+        """Read JWT secret key from file."""
+        try:
+            return Path(self.jwt_secret_key_file).read_text().strip()
+        except FileNotFoundError:
+            # For development/testing, return a default key
+            return "development_secret_key_do_not_use_in_production"
+    
+    @property
+    def access_token_expires_delta(self) -> timedelta:
+        """Get access token expiration delta."""
+        return timedelta(minutes=self.access_token_expire_minutes)
+    
+    @property
+    def refresh_token_expires_delta(self) -> timedelta:
+        """Get refresh token expiration delta."""
+        return timedelta(days=self.refresh_token_expire_days)
 
 
 class DatabaseConfig(BaseModel):
@@ -51,6 +80,7 @@ class Config(BaseModel):
     redis: RedisConfig = Field(default_factory=RedisConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
 
 
 def load_config(config_path: Optional[str] = None) -> Config:
