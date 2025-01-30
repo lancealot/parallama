@@ -1,3 +1,5 @@
+![alt_text](https://github.com/lancealot/parallama/blob/main/parallama.png?raw=true)
+
 # Parallama
 
 Parallama is a multi-user authentication and access management service for Ollama. It provides a secure API gateway that enables multiple users to access Ollama services over a network with individual API keys, rate limiting, and usage tracking.
