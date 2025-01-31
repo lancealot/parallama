@@ -171,11 +171,14 @@ def requires_permission(permission: Permission) -> Callable:
                     detail="Authentication required"
                 )
             
-            # Get role service from kwargs or create new one
-            db = kwargs.get("db")
-            if not db:
-                db = next(get_db())
-            role_service = RoleService(db)
+            # Get role service from kwargs
+            role_service = kwargs.get("role_service")
+            if not role_service:
+                # Fallback to creating new role service if not provided
+                db = kwargs.get("db")
+                if not db:
+                    db = next(get_db())
+                role_service = RoleService(db)
             
             # Check permission
             if not role_service.check_permission(user_id, permission):
@@ -184,7 +187,10 @@ def requires_permission(permission: Permission) -> Callable:
                     detail=f"Missing required permission: {permission}"
                 )
             
-            return await func(*args, **kwargs)
+            # Remove role_service from kwargs before calling the wrapped function
+            kwargs_copy = kwargs.copy()
+            kwargs_copy.pop('role_service', None)
+            return await func(*args, **kwargs_copy)
         return wrapper
     return decorator
 
@@ -221,11 +227,14 @@ def requires_any_permission(permissions: List[Permission]) -> Callable:
                     detail="Authentication required"
                 )
             
-            # Get role service from kwargs or create new one
-            db = kwargs.get("db")
-            if not db:
-                db = next(get_db())
-            role_service = RoleService(db)
+            # Get role service from kwargs
+            role_service = kwargs.get("role_service")
+            if not role_service:
+                # Fallback to creating new role service if not provided
+                db = kwargs.get("db")
+                if not db:
+                    db = next(get_db())
+                role_service = RoleService(db)
             
             # Check if user has any of the required permissions
             has_permission = any(
@@ -239,7 +248,10 @@ def requires_any_permission(permissions: List[Permission]) -> Callable:
                     detail=f"Missing required permissions: {[str(p) for p in permissions]}"
                 )
             
-            return await func(*args, **kwargs)
+            # Remove role_service from kwargs before calling the wrapped function
+            kwargs_copy = kwargs.copy()
+            kwargs_copy.pop('role_service', None)
+            return await func(*args, **kwargs_copy)
         return wrapper
     return decorator
 
@@ -276,11 +288,14 @@ def requires_all_permissions(permissions: List[Permission]) -> Callable:
                     detail="Authentication required"
                 )
             
-            # Get role service from kwargs or create new one
-            db = kwargs.get("db")
-            if not db:
-                db = next(get_db())
-            role_service = RoleService(db)
+            # Get role service from kwargs
+            role_service = kwargs.get("role_service")
+            if not role_service:
+                # Fallback to creating new role service if not provided
+                db = kwargs.get("db")
+                if not db:
+                    db = next(get_db())
+                role_service = RoleService(db)
             
             # Check if user has all required permissions
             has_all_permissions = all(
@@ -294,6 +309,9 @@ def requires_all_permissions(permissions: List[Permission]) -> Callable:
                     detail=f"Missing required permissions: {[str(p) for p in permissions]}"
                 )
             
-            return await func(*args, **kwargs)
+            # Remove role_service from kwargs before calling the wrapped function
+            kwargs_copy = kwargs.copy()
+            kwargs_copy.pop('role_service', None)
+            return await func(*args, **kwargs_copy)
         return wrapper
     return decorator

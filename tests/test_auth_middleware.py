@@ -200,13 +200,13 @@ async def test_requires_permission_decorator(test_user_id, mock_role_service):
     
     # Test with permission granted
     mock_role_service.check_permission.return_value = True
-    result = await test_endpoint(user_id=test_user_id)
+    result = await test_endpoint(user_id=test_user_id, role_service=mock_role_service)
     assert result == {"message": "success"}
     
     # Test with permission denied
     mock_role_service.check_permission.return_value = False
     with pytest.raises(HTTPException) as exc_info:
-        await test_endpoint(user_id=test_user_id)
+        await test_endpoint(user_id=test_user_id, role_service=mock_role_service)
     
     assert exc_info.value.status_code == 403
     assert "Missing required permission" in str(exc_info.value.detail)
@@ -223,13 +223,13 @@ async def test_requires_any_permission_decorator(test_user_id, mock_role_service
     
     # Test with one permission granted
     mock_role_service.check_permission.side_effect = [True, False]
-    result = await test_endpoint(user_id=test_user_id)
+    result = await test_endpoint(user_id=test_user_id, role_service=mock_role_service)
     assert result == {"message": "success"}
     
     # Test with no permissions granted
     mock_role_service.check_permission.side_effect = [False, False]
     with pytest.raises(HTTPException) as exc_info:
-        await test_endpoint(user_id=test_user_id)
+        await test_endpoint(user_id=test_user_id, role_service=mock_role_service)
     
     assert exc_info.value.status_code == 403
     assert "Missing required permissions" in str(exc_info.value.detail)
@@ -246,13 +246,13 @@ async def test_requires_all_permissions_decorator(test_user_id, mock_role_servic
     
     # Test with all permissions granted
     mock_role_service.check_permission.side_effect = [True, True]
-    result = await test_endpoint(user_id=test_user_id)
+    result = await test_endpoint(user_id=test_user_id, role_service=mock_role_service)
     assert result == {"message": "success"}
     
     # Test with some permissions missing
     mock_role_service.check_permission.side_effect = [True, False]
     with pytest.raises(HTTPException) as exc_info:
-        await test_endpoint(user_id=test_user_id)
+        await test_endpoint(user_id=test_user_id, role_service=mock_role_service)
     
     assert exc_info.value.status_code == 403
     assert "Missing required permissions" in str(exc_info.value.detail)

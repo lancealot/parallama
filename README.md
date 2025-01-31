@@ -124,18 +124,52 @@ pip install -e ".[dev]"
 docker-compose up -d  # Starts PostgreSQL and Redis
 ```
 
-5. Run development server:
+5. Initialize the database:
+```bash
+alembic upgrade head  # Applies all database migrations
+```
+
+6. Run development server:
 ```bash
 python scripts/run_dev.py
+```
+
+7. Run tests:
+```bash
+pytest tests/  # Run all tests
+pytest tests/ -v  # Run with verbose output
+pytest tests/test_auth_service.py  # Run specific test file
 ```
 
 ### Project Structure
 
 The project follows a clean, modular structure:
 - `src/parallama/` - Main package source code
-- `tests/` - Test suite
+  * `api/` - FastAPI application and routes
+  * `core/` - Core functionality and configuration
+  * `db/` - Database connection and session management
+  * `middleware/` - Authentication and authorization middleware
+  * `models/` - SQLAlchemy database models
+  * `services/` - Business logic implementation
+- `tests/` - Comprehensive test suite
 - `alembic/` - Database migrations
 - `config/` - Configuration files
 - `scripts/` - Development and utility scripts
 
 See [STRUCTURE.md](STRUCTURE.md) for complete documentation of the project structure.
+
+### Current Status
+
+#### Completed Features
+- Authentication Service with JWT and API keys
+- Role-Based Access Control (RBAC)
+- Database Models and Migrations
+- Authentication Middleware
+- Comprehensive Test Coverage
+
+#### In Progress
+- Gateway Implementation
+- Usage Tracking
+- Rate Limiting
+
+See [NEXT_SESSION.md](NEXT_SESSION.md) for detailed development planning.
