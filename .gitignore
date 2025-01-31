@@ -22,38 +22,32 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
+env/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-.project
-.pydevproject
-.settings/
+*~
 
-# Testing
+# Logs
+logs/
+*.log
+
+# Local development
+.env
+.env.local
+*.dev
+config/*.dev
+config/*.local
+
+# Test coverage
 .coverage
 htmlcov/
 .pytest_cache/
 .tox/
-nosetests.xml
-coverage.xml
-
-# Distribution
-*.spec
-*.rpm
-*.deb
-
-# Logs
-*.log
-logs/
-
-# Environment variables
-.env
-.env.*
 
 # Database
 *.db
@@ -62,16 +56,6 @@ logs/
 # Redis
 dump.rdb
 
-# Temporary files
-*.tmp
-*.bak
-*~
-
-# System files
+# System
 .DS_Store
 Thumbs.db
-
-# Project-specific
-/etc/parallama/jwt_secret
-/etc/parallama/db_password
-/var/log/parallama/
