@@ -6,6 +6,7 @@ managing configurations, and handling different gateway implementations.
 """
 
 from .base import LLMGateway
+from .ollama import OllamaGateway
 from .config import (
     GatewayType,
     GatewayConfig,
@@ -16,9 +17,15 @@ from .config import (
 from .registry import GatewayRegistry
 from .router import router as gateway_router
 
+# Register gateway implementations
+GatewayRegistry.register(GatewayType.OLLAMA, OllamaGateway)
+
 __all__ = [
     # Base interface
     "LLMGateway",
+    
+    # Gateway implementations
+    "OllamaGateway",
     
     # Configuration
     "GatewayType",

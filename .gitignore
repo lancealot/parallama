@@ -22,8 +22,8 @@ wheels/
 
 # Virtual Environment
 venv/
-ENV/
 env/
+ENV/
 
 # IDE
 .idea/
@@ -32,29 +32,28 @@ env/
 *.swo
 *~
 
-# Logs
-logs/
-*.log
-
-# Local development
-.env
-.env.local
-*.dev
-config/*.dev
-config/*.local
-
-# Test coverage
+# Testing
+.pytest_cache/
 .coverage
 htmlcov/
-.pytest_cache/
 .tox/
 
-# Database
-*.db
-*.sqlite3
+# Logs
+*.log
+logs/
 
-# Redis
-dump.rdb
+# Environment variables
+.env
+.env.*
+
+# Development configuration
+config/config.dev.yaml
+config/db_password.dev
+
+# Distribution
+*.rpm
+*.deb
+*.tar.gz
 
 # System
 .DS_Store

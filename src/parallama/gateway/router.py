@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from fastapi import APIRouter, Request, Response, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+import httpx
 from .registry import GatewayRegistry
 from .config import GatewayType
 from ..core.exceptions import GatewayError
@@ -105,18 +106,51 @@ async def route_request(
         # Transform and forward request
         transformed_request = await gateway.transform_request(request)
         
-        # TODO: Make actual request to LLM service
-        # For now, return mock response
-        mock_response = {
-            "status": "success",
-            "gateway": gateway_name,
-            "path": path,
-            "request": transformed_request
-        }
-        
-        # Transform response
-        return await gateway.transform_response(mock_response)
-        
+        # Forward request to LLM service
+        async with httpx.AsyncClient() as client:
+            # Check if this is a streaming request
+            is_streaming = transformed_request.get("stream", False)
+            
+            try:
+                # Make request to LLM service
+                response = await client.post(
+                    f"{gateway.base_url}/{path}",
+                    json=transformed_request,
+                    headers={"Content-Type": "application/json"},
+                    timeout=60.0  # Longer timeout for LLM requests
+                )
+                
+                # Handle errors
+                if response.status_code >= 400:
+                    error_data = await response.json()
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=error_data.get("error", "LLM service error")
+                    )
+                
+                # Handle streaming response
+                if is_streaming:
+                    return StreamingResponse(
+                        response.aiter_lines(),
+                        media_type="text/event-stream",
+                        headers={"Cache-Control": "no-cache"}
+                    )
+                
+                # Transform non-streaming response
+                response_data = await response.json()
+                return await gateway.transform_response(response_data)
+                
+            except httpx.ReadTimeout:
+                raise HTTPException(
+                    status_code=504,
+                    detail="Request to LLM service timed out"
+                )
+            except (httpx.ConnectError, httpx.RequestError) as e:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Failed to connect to LLM service: {str(e)}"
+                )
+            
     except HTTPException:
         raise
     except Exception as e:
