@@ -5,9 +5,10 @@ import os
 import sys
 import uvicorn
 
-# Add project root to Python path
+# Add src directory to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
+src_path = os.path.join(project_root, "src")
+sys.path.insert(0, src_path)
 
 # Set development config path
 os.environ["PARALLAMA_CONFIG"] = os.path.join(

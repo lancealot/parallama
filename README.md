@@ -95,3 +95,47 @@ sudo dnf install parallama
 ```
 
 See USAGE.md for detailed setup and configuration instructions.
+
+## Development
+
+This project uses a src-layout Python package structure. For detailed information about the project structure, components, and development conventions, see [STRUCTURE.md](STRUCTURE.md).
+
+### Development Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/lancealot/parallama.git
+cd parallama
+```
+
+2. Create a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install development dependencies:
+```bash
+pip install -e ".[dev]"
+```
+
+4. Start development services:
+```bash
+docker-compose up -d  # Starts PostgreSQL and Redis
+```
+
+5. Run development server:
+```bash
+python scripts/run_dev.py
+```
+
+### Project Structure
+
+The project follows a clean, modular structure:
+- `src/parallama/` - Main package source code
+- `tests/` - Test suite
+- `alembic/` - Database migrations
+- `config/` - Configuration files
+- `scripts/` - Development and utility scripts
+
+See [STRUCTURE.md](STRUCTURE.md) for complete documentation of the project structure.
