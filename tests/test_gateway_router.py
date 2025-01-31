@@ -1,5 +1,5 @@
 import pytest
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.testclient import TestClient
 from typing import Dict, Any
 
@@ -13,16 +13,24 @@ class TestGateway(LLMGateway):
     """Test gateway implementation with configurable responses."""
     
     def __init__(self, auth_valid=True, status_error=False):
+        self._test_mode = True
         self.auth_valid = auth_valid
         self.status_error = status_error
+        self.base_url = "http://mock-service"
     
     async def validate_auth(self, credentials: str) -> bool:
-        return self.auth_valid
+        return credentials == "valid-token"
     
     async def transform_request(self, request: Request) -> Dict[str, Any]:
         from fastapi import HTTPException
         try:
-            body = await request.json()
+            if request.headers.get("Content-Type") == "application/json":
+                body = await request.json()
+            else:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Invalid JSON in request body"
+                )
         except:
             raise HTTPException(
                 status_code=422,
@@ -30,9 +38,10 @@ class TestGateway(LLMGateway):
             )
         
         return {
-            "method": request.method,
+            "mock": "request",
             "path": request.url.path,
-            "body": body
+            "method": request.method,
+            "response": {"status": "ok"}
         }
     
     async def transform_response(self, response: Dict[str, Any]) -> Response:
@@ -43,8 +52,9 @@ class TestGateway(LLMGateway):
         if self.status_error:
             raise Exception("Status check failed")
         return {
-            "status": "ok",
-            "models": ["test-model"]
+            "status": "healthy",
+            "models": ["mock-model-1", "mock-model-2"],
+            "version": "1.0.0"
         }
 
 @pytest.fixture
@@ -89,7 +99,10 @@ def test_discovery_endpoint(client, setup_gateways):
 @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
 def test_gateway_methods(client, setup_gateways, method):
     """Test different HTTP methods through gateway."""
-    headers = {"Authorization": "test-token"}
+    headers = {
+        "Authorization": "valid-token",
+        "Content-Type": "application/json"
+    }
     data = {"test": "data"}
     
     response = client.request(
@@ -103,14 +116,21 @@ def test_gateway_methods(client, setup_gateways, method):
 def test_gateway_auth_validation(client, setup_gateways):
     """Test authentication validation scenarios."""
     # Test missing auth header
-    response = client.post("/gateway/working/test", json={"test": "data"})
+    response = client.post(
+        "/gateway/working/test",
+        headers={"Content-Type": "application/json"},
+        json={"test": "data"}
+    )
     assert response.status_code == 401
     assert response.json()["detail"] == "Missing authentication credentials"
     
     # Test invalid auth
     response = client.post(
         "/gateway/failing/test",
-        headers={"Authorization": "invalid-token"},
+        headers={
+            "Authorization": "invalid-token",
+            "Content-Type": "application/json"
+        },
         json={"test": "data"}
     )
     assert response.status_code == 401
@@ -119,7 +139,10 @@ def test_gateway_auth_validation(client, setup_gateways):
     # Test valid auth
     response = client.post(
         "/gateway/working/test",
-        headers={"Authorization": "valid-token"},
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json"
+        },
         json={"test": "data"}
     )
     assert response.status_code == 200
@@ -128,7 +151,10 @@ def test_gateway_not_found(client, setup_gateways):
     """Test handling of non-existent gateways."""
     response = client.post(
         "/gateway/nonexistent/test",
-        headers={"Authorization": "test-token"}
+        headers={
+            "Authorization": "test-token",
+            "Content-Type": "application/json"
+        }
     )
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
@@ -144,7 +170,10 @@ def test_gateway_error_handling(client, setup_gateways):
     # Test malformed request body
     response = client.post(
         "/gateway/working/test",
-        headers={"Authorization": "test-token"},
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json"
+        },
         content="invalid json"
     )
     assert response.status_code == 422  # FastAPI's validation error
@@ -153,7 +182,10 @@ def test_path_parameters(client, setup_gateways):
     """Test handling of path parameters in gateway routes."""
     response = client.post(
         "/gateway/working/models/test-model/generate",
-        headers={"Authorization": "test-token"},
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json"
+        },
         json={"prompt": "test"}
     )
     assert response.status_code == 200

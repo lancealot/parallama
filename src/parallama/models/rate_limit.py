@@ -1,58 +1,53 @@
-"""Gateway Rate Limit model and related functionality."""
-from sqlalchemy import Column, String, Integer, ForeignKey, UniqueConstraint
+"""Rate limiting models for tracking usage and limits."""
+
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+
 from .base import BaseModel
+from .user import User
 
 class GatewayRateLimit(BaseModel):
-    """Rate limit configuration for users per gateway."""
+    """Stores rate limit configurations per user and gateway."""
     __tablename__ = "gateway_rate_limits"
-    __table_args__ = (
-        UniqueConstraint('user_id', 'gateway_type', name='uq_user_gateway_limit'),
-    )
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    gateway_type = Column(String, nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    gateway_type = Column(String(50), nullable=False)
     token_limit_hourly = Column(Integer)
     token_limit_daily = Column(Integer)
     request_limit_hourly = Column(Integer)
     request_limit_daily = Column(Integer)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     # Relationships
     user = relationship("User", back_populates="rate_limits")
 
-    @classmethod
-    def create_default(cls, user_id: UUID, gateway_type: str) -> "GatewayRateLimit":
-        """Create a rate limit with default values."""
-        return cls(
-            user_id=user_id,
-            gateway_type=gateway_type,
-            token_limit_hourly=10000,    # 10k tokens per hour
-            token_limit_daily=100000,    # 100k tokens per day
-            request_limit_hourly=100,    # 100 requests per hour
-            request_limit_daily=1000     # 1000 requests per day
-        )
+    class Config:
+        """Pydantic model configuration."""
+        orm_mode = True
 
-    def update_limits(
-        self,
-        token_limit_hourly: int = None,
-        token_limit_daily: int = None,
-        request_limit_hourly: int = None,
-        request_limit_daily: int = None
-    ) -> None:
-        """Update rate limits with new values."""
-        if token_limit_hourly is not None:
-            self.token_limit_hourly = token_limit_hourly
-        if token_limit_daily is not None:
-            self.token_limit_daily = token_limit_daily
-        if request_limit_hourly is not None:
-            self.request_limit_hourly = request_limit_hourly
-        if request_limit_daily is not None:
-            self.request_limit_daily = request_limit_daily
+class GatewayUsageLog(BaseModel):
+    """Tracks API usage per user and gateway."""
+    __tablename__ = "gateway_usage_logs"
 
-    def __repr__(self) -> str:
-        """String representation of the rate limit."""
-        return (
-            f"<GatewayRateLimit user_id={self.user_id} "
-            f"gateway={self.gateway_type}>"
-        )
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    gateway_type = Column(String(50), nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
+    endpoint = Column(String(255), nullable=False)
+    model_name = Column(String(255))
+    tokens_used = Column(Integer)
+    request_duration = Column(Integer)  # Duration in milliseconds
+    status_code = Column(Integer)
+    error_message = Column(String)
+
+    # Relationships
+    user = relationship("User", back_populates="usage_logs")
+
+    class Config:
+        """Pydantic model configuration."""
+        orm_mode = True

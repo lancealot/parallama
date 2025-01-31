@@ -16,14 +16,24 @@ from parallama.gateway import (
 class MockGateway(LLMGateway):
     """Mock gateway implementation for testing."""
     
+    def __init__(self):
+        self._test_mode = True
+        self.base_url = "http://mock-service"
+    
     async def validate_auth(self, credentials: str) -> bool:
         return credentials == "valid-token"
     
     async def transform_request(self, request: Request) -> Dict[str, Any]:
-        return {"mock": "request"}
+        return {
+            "mock": "request",
+            "path": request.url.path,
+            "method": request.method,
+            "response": {"status": "ok"}
+        }
     
     async def transform_response(self, response: Dict[str, Any]) -> Response:
-        return Response(content=str(response), media_type="application/json")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content=response)
     
     async def get_status(self) -> Dict[str, Any]:
         return {

@@ -1,137 +1,151 @@
-"""Test configuration and shared fixtures."""
+"""Test configuration and fixtures."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Generator
-from unittest.mock import MagicMock, create_autospec
 import pytest
+from unittest.mock import MagicMock, patch
 from redis import Redis
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import sessionmaker, Session
+from datetime import datetime
 
 from parallama.models.base import Base
-from parallama.core.config import AuthConfig, DatabaseConfig, RedisConfig
-from parallama.core.permissions import Permission, DefaultRoles
-from parallama.models.role import Role
-from parallama.models.user import User
-from parallama.services.auth import AuthService
-from parallama.services.api_key import APIKeyService
-from parallama.services.role import RoleService
 
-
-@pytest.fixture
+@pytest.fixture(scope="function")
 def engine():
-    """Create a SQLite in-memory database engine for testing."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool
-    )
-    Base.metadata.create_all(bind=engine)
-    yield engine
-    Base.metadata.drop_all(bind=engine)
-
+    """Create a test database engine."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return engine
 
 @pytest.fixture
-def db_session(engine) -> Generator[Session, None, None]:
-    """Create a new database session for a test."""
-    SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
-    session = SessionLocal()
+def db_session(engine) -> Session:
+    """Create a test database session."""
+    Session = sessionmaker(bind=engine)
+    session = Session()
     try:
         yield session
     finally:
         session.rollback()
         session.close()
 
+class RedisMock:
+    """Mock Redis client that properly persists counters."""
+    def __init__(self):
+        self.counters = {}
+        self.pipeline_operations = []
 
-@pytest.fixture
+    def pipeline(self):
+        """Create a new pipeline."""
+        self.pipeline_operations.clear()
+        pipeline = MagicMock()
+
+        def mock_get(key):
+            self.pipeline_operations.append(("get", key))
+            return pipeline
+
+        def mock_incr(key):
+            self.pipeline_operations.append(("incr", key))
+            return pipeline
+
+        def mock_incrby(key, amount):
+            self.pipeline_operations.append(("incrby", key, amount))
+            return pipeline
+
+        def mock_expire(key, ttl):
+            self.pipeline_operations.append(("expire", key, ttl))
+            return pipeline
+
+        def mock_execute():
+            results = []
+            get_ops = []
+
+            print("\nPipeline Operations:")
+            for op in self.pipeline_operations:
+                print(f"- {op}")
+            print("Current Counters:", self.counters)
+
+            # First collect all get operations and their values
+            for op in self.pipeline_operations:
+                if op[0] == "get":
+                    get_ops.append(op[1])
+                    # For token keys, accumulate all token usage for the current hour/day
+                    if ":tokens:hour:" in op[1]:
+                        hour = datetime.utcnow().strftime("%Y-%m-%d-%H")
+                        base_key = op[1].split(hour)[0]
+                        total = sum(int(v) for k, v in self.counters.items() if k.startswith(base_key) and ":tokens:hour:" in k)
+                        results.append(str(total))
+                        print(f"GET {op[1]} -> {total} (accumulated)")
+                    elif ":tokens:day:" in op[1]:
+                        day = datetime.utcnow().strftime("%Y-%m-%d")
+                        base_key = op[1].split(day)[0]
+                        total = sum(int(v) for k, v in self.counters.items() if k.startswith(base_key) and ":tokens:day:" in k)
+                        results.append(str(total))
+                        print(f"GET {op[1]} -> {total} (accumulated)")
+                    else:
+                        value = self.counters.get(op[1], "0")
+                        results.append(value)
+                        print(f"GET {op[1]} -> {value}")
+
+            # Then process all mutations in order
+            for op in self.pipeline_operations:
+                if op[0] == "incr":
+                    current = int(self.counters.get(op[1], "0"))
+                    self.counters[op[1]] = str(current + 1)
+                    print(f"INCR {op[1]} -> {self.counters[op[1]]}")
+                elif op[0] == "incrby":
+                    current = int(self.counters.get(op[1], "0"))
+                    self.counters[op[1]] = str(current + op[2])
+                    print(f"INCRBY {op[1]} {op[2]} -> {self.counters[op[1]]}")
+                elif op[0] == "expire":
+                    print(f"EXPIRE {op[1]} {op[2]}")
+                    pass  # No-op for expire
+
+            print("Results:", results)
+            print("Updated Counters:", self.counters)
+            return results
+
+        pipeline.get.side_effect = mock_get
+        pipeline.execute.side_effect = mock_execute
+        pipeline.incr.side_effect = mock_incr
+        pipeline.incrby.side_effect = mock_incrby
+        pipeline.expire.side_effect = mock_expire
+        return pipeline
+
+    def get(self, key):
+        """Get a value from Redis."""
+        if ":tokens:hour:" in key:
+            hour = datetime.utcnow().strftime("%Y-%m-%d-%H")
+            base_key = key.split(hour)[0]
+            total = sum(int(v) for k, v in self.counters.items() if k.startswith(base_key) and ":tokens:hour:" in k)
+            print(f"Direct GET {key} -> {total} (accumulated)")
+            return str(total)
+        elif ":tokens:day:" in key:
+            day = datetime.utcnow().strftime("%Y-%m-%d")
+            base_key = key.split(day)[0]
+            total = sum(int(v) for k, v in self.counters.items() if k.startswith(base_key) and ":tokens:day:" in k)
+            print(f"Direct GET {key} -> {total} (accumulated)")
+            return str(total)
+        value = self.counters.get(key, "0")
+        print(f"Direct GET {key} -> {value}")
+        return value
+
+    def ping(self):
+        """Test Redis connection."""
+        return True
+
+    def close(self):
+        """Close Redis connection."""
+        pass
+
+@pytest.fixture(scope="function")
 def mock_redis():
-    """Create a mock Redis client for testing."""
-    redis = create_autospec(Redis)
-    redis.get.return_value = None
-    redis.incr.return_value = 1
-    redis.expire.return_value = True
-    redis.setex.return_value = True
-    return redis
-
-
-@pytest.fixture
-def mock_config():
-    """Create mock configuration for testing."""
-    return MagicMock(
-        auth=AuthConfig(
-            jwt_secret_key="test_secret",
-            access_token_expire_minutes=30,
-            refresh_token_expire_days=30,
-            refresh_token_rate_limit=5,
-            refresh_token_reuse_window=60
-        ),
-        database=DatabaseConfig(
-            url="sqlite:///:memory:",
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800,
-            echo_sql=False
-        ),
-        redis=RedisConfig(
-            host="localhost",
-            port=6379,
-            db=0,
-            password=None,
-            max_connections=10,
-            socket_timeout=5,
-            connect_timeout=5
-        )
-    )
-
-
-@pytest.fixture
-def test_user(db_session) -> User:
-    """Create a test user."""
-    user = User(username="testuser")
-    db_session.add(user)
-    db_session.commit()
-    return user
-
-
-@pytest.fixture
-def test_roles(db_session) -> dict[str, Role]:
-    """Create test roles."""
-    roles = {}
-    for role_name, role_data in DefaultRoles.get_all_roles().items():
-        role = Role(
-            name=role_name,
-            permissions=role_data["permissions"],
-            description=f"Test {role_name} role"
-        )
-        db_session.add(role)
-        roles[role_name] = role
+    """Create a mock Redis client with dynamic counters."""
+    redis_mock = RedisMock()
+    # Wrap in MagicMock to provide Redis interface
+    redis_client = MagicMock(wraps=redis_mock, spec=Redis)
+    redis_client.pipeline.side_effect = redis_mock.pipeline
+    redis_client.get.side_effect = redis_mock.get
+    redis_client.ping.return_value = True
+    redis_client.close.side_effect = redis_mock.close
     
-    db_session.commit()
-    yield roles
-    
-    # Clean up roles
-    for role in roles.values():
-        db_session.delete(role)
-    db_session.commit()
-
-
-@pytest.fixture
-def auth_service(db_session, mock_redis, mock_config) -> AuthService:
-    """Create an AuthService instance for testing."""
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("parallama.services.auth.config", mock_config)
-        return AuthService(db_session, mock_redis)
-
-
-@pytest.fixture
-def api_key_service(db_session, mock_redis) -> APIKeyService:
-    """Create an APIKeyService instance for testing."""
-    return APIKeyService(db_session, mock_redis)
-
-
-@pytest.fixture
-def role_service(db_session) -> RoleService:
-    """Create a RoleService instance for testing."""
-    return RoleService(db_session)
+    with patch('parallama.services.rate_limit.get_redis', return_value=iter([redis_client])):
+        yield redis_client

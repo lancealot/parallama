@@ -34,11 +34,11 @@
   - [x] Authentication integration
   - [x] Streaming support
   - [x] Comprehensive test coverage
-- [ ] Gateway-specific Features
-  - [ ] Per-gateway rate limiting
-  - [ ] Model mapping configuration
-  - [ ] Response transformation
-  - [ ] Usage tracking
+- [x] Gateway-specific Features
+  - [x] Per-gateway rate limiting
+  - [x] Model mapping configuration
+  - [x] Response transformation
+  - [x] Usage tracking
 - [ ] OpenAI Compatibility Gateway
   - [ ] Basic gateway functionality
   - [ ] Model mapping
@@ -46,22 +46,25 @@
   - [ ] Response transformation
   - [ ] Streaming support
 
-## Phase 2.6: API Integration
-- [ ] Rate limiting implementation
-  - [ ] Redis integration
-  - [ ] Token counting
-  - [ ] Per-model limits
-  - [ ] Usage tracking
-- [ ] Usage tracking
-  - [ ] Request logging
-  - [ ] Token usage tracking
-  - [ ] Analytics generation
+## Phase 2.6: API Integration ✓
+- [x] Rate limiting implementation
+  - [x] Redis integration
+  - [x] Token counting
+  - [x] Per-model limits
+  - [x] Usage tracking
+  - [x] Wildcard gateway support
+  - [x] Token accumulation tracking
+  - [x] Redis mock for testing
+- [x] Usage tracking
+  - [x] Request logging
+  - [x] Token usage tracking
+  - [x] Analytics generation
 
 ## Phase 3: Database Integration
 - [x] PostgreSQL schema design
 - [x] Database migrations with Alembic
 - [x] User management
-- [ ] Usage logging
+- [x] Usage logging
 
 ## Phase 4: CLI Tool Development
 - [x] User management commands
@@ -177,6 +180,8 @@ CREATE TABLE model_mappings (
   - Per-gateway rate limiting
   - Token counting
   - Request tracking
+  - Wildcard gateway support
+  - Token accumulation tracking
 
 #### Gateway Components
 - Gateway Registry Service

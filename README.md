@@ -9,10 +9,12 @@ Parallama is a multi-user authentication and access management service for Ollam
 ### API Gateway Support
 - Multiple API compatibility modes:
   - Native Ollama API (/ollama/v1)
-  - OpenAI-compatible API (/openai/v1)
+  - OpenAI-compatible API (/openai/v1) (Coming Soon)
   - Extensible framework for future API types
 - API discovery and status monitoring
 - Per-gateway rate limiting and usage tracking
+- Wildcard gateway support for shared limits
+- Token accumulation tracking
 
 ### Authentication & Security
 - JWT-based authentication with refresh tokens
@@ -33,7 +35,12 @@ Parallama is a multi-user authentication and access management service for Ollam
 
 ### Core Features
 - REST API for authenticated access to Ollama services
-- Configurable rate limiting (per gateway, user, and model)
+- Advanced rate limiting:
+  - Per-gateway, user, and model limits
+  - Token and request counting
+  - Hourly and daily limits
+  - Wildcard gateway support
+  - Token accumulation tracking
 - Detailed usage tracking and reporting
 - Command-line interface for system management
 - Systemd service integration
@@ -81,7 +88,7 @@ parallama-cli key generate myuser
 curl http://localhost:8000/ollama/v1/models \
   -H "Authorization: Bearer your-api-key"
 
-# Using OpenAI compatibility mode
+# Using OpenAI compatibility mode (Coming Soon)
 curl http://localhost:8000/openai/v1/models \
   -H "Authorization: Bearer your-api-key"
 ```
@@ -165,11 +172,18 @@ See [STRUCTURE.md](STRUCTURE.md) for complete documentation of the project struc
 - Role-Based Access Control (RBAC)
 - Database Models and Migrations
 - Authentication Middleware
+- Rate Limiting Service
+  * Per-gateway and shared limits
+  * Token accumulation tracking
+  * Redis integration with mocking support
+  * Comprehensive test coverage
+- Ollama Gateway Implementation
+- Usage Tracking and Logging
 - Comprehensive Test Coverage
 
 #### In Progress
-- Gateway Implementation
-- Usage Tracking
-- Rate Limiting
+- OpenAI Compatibility Gateway
+- Usage Analytics Dashboard
+- Deployment Documentation
 
 See [NEXT_SESSION.md](NEXT_SESSION.md) for detailed development planning.
