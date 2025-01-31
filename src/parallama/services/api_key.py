@@ -23,7 +23,7 @@ class APIKeyService:
         self.db = db
         self.redis = redis
 
-    def create_key(self, user_id: UUID, description: str = None) -> str:
+    def create_key(self, user_id: str, description: str = None) -> str:
         """
         Create a new API key for a user.
 
@@ -58,7 +58,7 @@ class APIKeyService:
             self.db.rollback()
             raise APIKeyError(f"Error creating API key: {str(e)}")
 
-    def verify_key(self, key: str) -> Optional[UUID]:
+    def verify_key(self, key: str) -> Optional[str]:
         """
         Verify an API key and return the user ID if valid.
 
@@ -77,7 +77,7 @@ class APIKeyService:
             cached_user_id = self.redis.get(cache_key)
             
             if cached_user_id:
-                return UUID(cached_user_id.decode())
+                return cached_user_id.decode()
             
             # Find key in database
             key_model = self.db.query(APIKey).filter(
@@ -111,7 +111,7 @@ class APIKeyService:
         except Exception as e:
             raise APIKeyError(f"Error verifying API key: {str(e)}")
 
-    def revoke_key(self, key_id: UUID) -> None:
+    def revoke_key(self, key_id: str) -> None:
         """
         Revoke an API key.
 
@@ -138,7 +138,7 @@ class APIKeyService:
             self.db.rollback()
             raise APIKeyError(f"Error revoking API key: {str(e)}")
 
-    def list_keys(self, user_id: UUID) -> List[dict]:
+    def list_keys(self, user_id: str) -> List[dict]:
         """
         List all API keys for a user.
 

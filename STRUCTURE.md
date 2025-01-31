@@ -28,6 +28,19 @@ parallama/
 │       │   ├── __init__.py
 │       │   └── app.py         # FastAPI application
 │       │
+│       ├── cli/               # Command-line interface
+│       │   ├── __init__.py
+│       │   ├── commands/      # CLI command implementations
+│       │   │   ├── __init__.py
+│       │   │   ├── key.py     # API key management commands
+│       │   │   └── user.py    # User management commands
+│       │   ├── core/          # CLI core functionality
+│       │   │   ├── __init__.py
+│       │   │   └── db.py      # Database session management
+│       │   └── utils/         # CLI utilities
+│       │       ├── __init__.py
+│       │       └── output.py  # Output formatting
+│       │
 │       ├── core/              # Core functionality
 │       │   ├── __init__.py
 │       │   ├── config.py      # Configuration management
@@ -68,6 +81,9 @@ parallama/
 │   ├── test_api_key_service.py
 │   ├── test_auth_middleware.py
 │   ├── test_auth_service.py
+│   ├── test_cli_commands.py   # CLI command tests
+│   ├── test_cli_db.py        # CLI database tests
+│   ├── test_cli_output.py    # CLI output tests
 │   └── test_role_service.py
 │
 ├── .gitignore                 # Git ignore rules
@@ -88,10 +104,17 @@ parallama/
 The main package code is organized into several modules:
 
 - **api/**: FastAPI application and route definitions
+- **cli/**: Command-line interface
+  * **commands/**: CLI command implementations
+  * **core/**: CLI core functionality
+  * **utils/**: CLI utilities
 - **core/**: Core functionality and configuration
 - **db/**: Database connection and session management
 - **middleware/**: Request processing middleware
 - **models/**: SQLAlchemy database models
+  * String UUIDs for SQLite compatibility
+  * Base model with common fields
+  * Role-based access control models
 - **services/**: Business logic implementation
 
 ### Configuration (`config/`)
@@ -113,7 +136,10 @@ Alembic migration management:
 Comprehensive test suite:
 - Unit tests for services
 - Integration tests for API
+- CLI command tests
 - Test fixtures and configuration
+- Mock database sessions
+- Mock Redis client
 
 ### Scripts (`scripts/`)
 

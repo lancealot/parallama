@@ -2,14 +2,13 @@
 import secrets
 from sqlalchemy import Column, String, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 from .base import BaseModel
 
 class APIKey(BaseModel):
     """API Key model for authentication."""
     __tablename__ = "api_keys"
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     key_hash = Column(String, nullable=False, index=True)
     description = Column(String, nullable=True)
     revoked_at = Column(DateTime(timezone=True))

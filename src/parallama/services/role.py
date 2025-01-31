@@ -41,7 +41,7 @@ class RoleService:
             self.db.rollback()
             raise DuplicateResourceError(f"Role with name '{name}' already exists")
 
-    def get_role(self, role_id: UUID) -> Optional[Role]:
+    def get_role(self, role_id: str) -> Optional[Role]:
         """
         Get a role by its ID.
         
@@ -67,9 +67,9 @@ class RoleService:
 
     def assign_role_to_user(
         self, 
-        user_id: UUID, 
-        role_id: UUID, 
-        assigned_by: Optional[UUID] = None,
+        user_id: str, 
+        role_id: str, 
+        assigned_by: Optional[str] = None,
         expires_at: Optional[datetime] = None
     ) -> UserRole:
         """
@@ -106,7 +106,7 @@ class RoleService:
             self.db.rollback()
             raise DuplicateResourceError(f"User already has role '{role.name}'")
 
-    def remove_role_from_user(self, user_id: UUID, role_id: UUID) -> None:
+    def remove_role_from_user(self, user_id: str, role_id: str) -> None:
         """
         Remove a role from a user.
         
@@ -120,7 +120,7 @@ class RoleService:
         ).delete()
         self.db.commit()
 
-    def get_user_roles(self, user_id: UUID) -> List[Role]:
+    def get_user_roles(self, user_id: str) -> List[Role]:
         """
         Get all active (non-expired) roles for a user.
         
@@ -137,7 +137,7 @@ class RoleService:
         ).all()
         return [ur.role for ur in user_roles]
 
-    def check_permission(self, user_id: UUID, permission: Permission) -> bool:
+    def check_permission(self, user_id: str, permission: Permission) -> bool:
         """
         Check if a user has a specific permission through any of their roles.
         

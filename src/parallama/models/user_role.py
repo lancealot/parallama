@@ -1,8 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy import Column, DateTime, ForeignKey, UniqueConstraint, String
 from sqlalchemy.orm import relationship
 
 from parallama.models.base import Base
@@ -17,10 +16,10 @@ class UserRole(Base):
         UniqueConstraint('user_id', 'role_id', name='uq_user_role'),
     )
 
-    id = Column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id = Column(PgUUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    role_id = Column(PgUUID(as_uuid=True), ForeignKey('roles.id', ondelete='CASCADE'), nullable=False)
-    assigned_by = Column(PgUUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    role_id = Column(String(36), ForeignKey('roles.id', ondelete='CASCADE'), nullable=False)
+    assigned_by = Column(String(36), ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     assigned_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=True)
 

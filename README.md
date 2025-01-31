@@ -78,8 +78,32 @@ sudo systemctl enable --now postgresql redis ollama parallama
 
 4. Create your first user and API key:
 ```bash
+# Create a basic user
 parallama-cli user create myuser
-parallama-cli key generate myuser
+
+# Create an admin user with premium role
+parallama-cli user create adminuser --admin --role premium
+
+# Generate an API key
+parallama-cli key generate myuser --description "Development key"
+
+# List API keys
+parallama-cli key list --username myuser
+
+# Revoke an API key
+parallama-cli key revoke <key-id>
+
+# List users
+parallama-cli user list
+
+# Get user info
+parallama-cli user info myuser
+
+# Update user
+parallama-cli user update myuser --role premium --admin
+
+# Delete user
+parallama-cli user delete myuser
 ```
 
 5. Test the API:

@@ -3,7 +3,7 @@ from typing import List
 from uuid import UUID, uuid4
 
 from sqlalchemy import Column, String, DateTime, Text
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.dialects.postgresql import UUID
 import json
 
 from parallama.core.permissions import Permission
@@ -15,7 +15,7 @@ class Role(Base):
     """
     __tablename__ = "roles"
 
-    id = Column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     name = Column(String, unique=True, nullable=False)
     permissions = Column(Text, nullable=False)
     description = Column(String, nullable=True)
