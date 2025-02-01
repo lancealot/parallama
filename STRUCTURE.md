@@ -33,7 +33,9 @@ parallama/
 │       │   ├── commands/      # CLI command implementations
 │       │   │   ├── __init__.py
 │       │   │   ├── key.py     # API key management commands
-│       │   │   └── user.py    # User management commands
+│       │   │   ├── user.py    # User management commands
+│       │   │   ├── ratelimit.py # Rate limit management commands
+│       │   │   └── usage.py   # Usage reporting commands
 │       │   ├── core/          # CLI core functionality
 │       │   │   ├── __init__.py
 │       │   │   └── db.py      # Database session management
@@ -84,6 +86,8 @@ parallama/
 │   ├── test_cli_commands.py   # CLI command tests
 │   ├── test_cli_db.py        # CLI database tests
 │   ├── test_cli_output.py    # CLI output tests
+│   ├── test_cli_ratelimit.py # Rate limit command tests
+│   ├── test_cli_usage.py     # Usage command tests
 │   └── test_role_service.py
 │
 ├── .gitignore                 # Git ignore rules

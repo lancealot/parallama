@@ -8,8 +8,26 @@ from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 
 from parallama.models.base import Base
+from parallama.core.config import Config, DatabaseConfig
 
-@pytest.fixture(scope="function")
+@pytest.fixture(autouse=True)
+def test_config():
+    """Override config with test settings."""
+    with patch('parallama.core.database.config') as mock_config:
+        # Create test config
+        config = Config()
+        config.database = DatabaseConfig(
+            url="sqlite:///:memory:",
+            pool_size=1,
+            max_overflow=0,
+            pool_timeout=30,
+            pool_recycle=1800,
+            echo_sql=False
+        )
+        mock_config.database = config.database
+        yield config
+
+@pytest.fixture(scope="function", autouse=True)
 def engine():
     """Create a test database engine."""
     engine = create_engine("sqlite:///:memory:")

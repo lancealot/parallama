@@ -2,6 +2,8 @@
 import click
 from .commands.user import user_cli
 from .commands.key import key_cli
+from .commands.ratelimit import ratelimit_cli
+from .commands.usage import usage_cli
 from .core.db import init_db, cleanup_db
 
 @click.group()
@@ -17,6 +19,8 @@ def cleanup(result, **kwargs):
 # Register command groups
 cli.add_command(user_cli)
 cli.add_command(key_cli)
+cli.add_command(ratelimit_cli)
+cli.add_command(usage_cli)
 
 def main():
     """Main entry point for the CLI."""

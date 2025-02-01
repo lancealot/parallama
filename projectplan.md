@@ -67,12 +67,18 @@
 - [x] Usage logging
 - [x] Session handling improvements
 
-## Phase 4: CLI Tool Development
+## Phase 4: CLI Tool Development ✓
 - [x] User management commands
 - [x] API key management with UUID string IDs
 - [x] Comprehensive test coverage
-- [ ] Usage reporting
-- [ ] Rate limit configuration
+- [x] Usage reporting
+  - [x] List usage history
+  - [x] Generate summaries
+  - [x] Export data (JSON/CSV)
+- [x] Rate limit configuration
+  - [x] Set rate limits
+  - [x] View current limits
+  - [x] Reset to defaults
 
 ## Phase 5: System Integration
 - [ ] Systemd service configuration

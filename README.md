@@ -104,6 +104,16 @@ parallama-cli user update myuser --role premium --admin
 
 # Delete user
 parallama-cli user delete myuser
+
+# Manage rate limits
+parallama-cli ratelimit set myuser ollama --token-hourly 1000 --token-daily 10000
+parallama-cli ratelimit get myuser [gateway_type]
+parallama-cli ratelimit reset myuser ollama
+
+# View usage information
+parallama-cli usage list myuser [--gateway ollama] [--days 7] [--model llama2]
+parallama-cli usage summary myuser [--gateway ollama] [--days 30]
+parallama-cli usage export myuser json|csv [--output file.json] [--gateway ollama] [--model llama2]
 ```
 
 5. Test the API:
