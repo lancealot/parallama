@@ -1,126 +1,181 @@
-"""API key management commands."""
-import click
-from uuid import UUID
+"""CLI commands for managing API keys."""
+
+from datetime import datetime, timezone, timedelta
 from typing import Optional
+from uuid import UUID
 
-from parallama.models.user import User
-from parallama.models.api_key import APIKey
-from parallama.services.api_key import APIKeyService
-from parallama.core.exceptions import ResourceNotFoundError
+import typer
+from sqlalchemy.orm import Session
 
-from ..core.db import get_db, get_redis
-from ..utils.output import (
-    print_error,
-    print_success,
-    print_table,
-    print_key,
-    confirm_action
-)
+from ...services.api_key import APIKeyService
+from ...core.database import get_db, get_redis
+from ..output import print_error, print_success, print_key, print_table
+from rich.table import Table
 
-@click.group(name='key')
-def key_cli():
-    """API key management commands."""
-    pass
+key_cli = typer.Typer(help="Manage API keys")
 
-@key_cli.command(name='generate')
-@click.argument('username')
-@click.option('--description', help='Description of the API key')
-def generate_key(username: str, description: Optional[str]):
-    """Generate a new API key for a user."""
-    db = get_db()
-    redis = get_redis()
-    
+@key_cli.command("create")
+def create_key(
+    user_id: UUID = typer.Argument(..., help="User ID to create key for"),
+    name: str = typer.Option(None, help="Name for the API key"),
+    expires_in: Optional[int] = typer.Option(
+        None,
+        help="Key expiry in days (default: never expires)"
+    )
+):
+    """Create a new API key."""
     try:
-        # Find user
-        user = db.query(User).filter(User.username == username).first()
-        if not user:
-            print_error(f"User '{username}' not found")
-            raise click.Abort()
-        
-        # Create API key
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
         api_key_service = APIKeyService(db, redis)
-        key = api_key_service.create_key(user.id, description)
-        
-        print_success(f"API key generated for user '{username}'")
-        print_key(key, description)
-        
-    except Exception as e:
-        db.rollback()
-        print_error(f"Failed to generate API key: {str(e)}")
-        raise click.Abort()
 
-@key_cli.command(name='list')
-@click.option('--username', required=True, help='Username to list keys for')
-def list_keys(username: str):
-    """List API keys for a user."""
-    db = get_db()
-    redis = get_redis()
-    
-    try:
-        # Find user
-        user = db.query(User).filter(User.username == username).first()
-        if not user:
-            print_error(f"User '{username}' not found")
-            raise click.Abort()
-        
-        # Get API keys
-        api_key_service = APIKeyService(db, redis)
-        keys = api_key_service.list_keys(user.id)
-        
-        # Prepare table data
-        headers = ['ID', 'Description', 'Created', 'Last Used', 'Status']
-        rows = [
-            [
-                str(k['id']),
-                k['description'] or 'N/A',
-                k['created_at'],
-                k['last_used_at'],
-                'Revoked' if k['revoked_at'] else 'Active'
-            ]
-            for k in keys
-        ]
-        
-        print_table(headers, rows, f"API Keys for {username}")
-        
-    except Exception as e:
-        print_error(f"Failed to list API keys: {str(e)}")
-        raise click.Abort()
+        # Create key
+        expires_at = None
+        if expires_in:
+            expires_at = datetime.now(timezone.utc).replace(
+                hour=23, minute=59, second=59
+            ) + timedelta(days=expires_in)
 
-@key_cli.command(name='revoke')
-@click.argument('key-id')
-def revoke_key(key_id: str):
-    """Revoke an API key."""
-    db = get_db()
-    redis = get_redis()
-    
-    try:
-        # Find API key
-        key = db.query(APIKey).filter(APIKey.id == key_id).first()
-        if not key:
-            print_error(f"API key '{key_id}' not found")
-            raise click.Abort()
-        
-        # Get user info for confirmation
-        user = db.query(User).filter(User.id == key.user_id).first()
-        
-        # Confirm revocation
-        message = (
-            f"Revoke API key for user '{user.username}'?\n"
-            f"Description: {key.description or 'N/A'}\n"
-            "This action cannot be undone!"
+        key = api_key_service.create_key(
+            user_id=str(user_id),
+            name=name,
+            expires_at=expires_at
         )
-        confirm_action(message)
-        
-        # Revoke key
-        api_key_service = APIKeyService(db, redis)
-        api_key_service.revoke_key(key_id)
-        
-        print_success("API key revoked successfully")
-        
-    except ValueError:
-        print_error("Invalid key ID format")
-        raise click.Abort()
+
+        # Print key
+        print_key(key.key)
+        print_success("API key created successfully")
+
     except Exception as e:
-        db.rollback()
-        print_error(f"Failed to revoke API key: {str(e)}")
-        raise click.Abort()
+        print_error(str(e))
+    finally:
+        db.close()
+        redis.close()
+
+@key_cli.command("list")
+def list_keys(
+    user_id: Optional[UUID] = typer.Option(
+        None,
+        help="Filter keys by user ID"
+    ),
+    show_expired: bool = typer.Option(
+        False,
+        help="Include expired keys"
+    )
+):
+    """List API keys."""
+    try:
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
+        api_key_service = APIKeyService(db, redis)
+
+        # Get keys
+        keys = api_key_service.list_keys(
+            user_id=str(user_id) if user_id else None,
+            include_expired=show_expired
+        )
+
+        # Create table
+        table = Table("ID", "Name", "User ID", "Created", "Expires", "Last Used")
+        for key in keys:
+            table.add_row(
+                key.id,
+                key.name or "",
+                key.user_id,
+                key.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                key.expires_at.strftime("%Y-%m-%d %H:%M:%S") if key.expires_at else "Never",
+                key.last_used_at.strftime("%Y-%m-%d %H:%M:%S") if key.last_used_at else "Never"
+            )
+
+        print_table(table)
+
+    except Exception as e:
+        print_error(str(e))
+    finally:
+        db.close()
+        redis.close()
+
+@key_cli.command("revoke")
+def revoke_key(
+    key_id: UUID = typer.Argument(..., help="ID of key to revoke")
+):
+    """Revoke an API key."""
+    try:
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
+        api_key_service = APIKeyService(db, redis)
+
+        # Revoke key
+        api_key_service.revoke_key(str(key_id))
+        print_success(f"API key {key_id} revoked successfully")
+
+    except Exception as e:
+        print_error(str(e))
+    finally:
+        db.close()
+        redis.close()
+
+@key_cli.command("revoke-all")
+def revoke_all_keys(
+    user_id: UUID = typer.Argument(..., help="User ID to revoke keys for")
+):
+    """Revoke all API keys for a user."""
+    try:
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
+        api_key_service = APIKeyService(db, redis)
+
+        # Revoke keys
+        api_key_service.revoke_all_user_keys(str(user_id))
+        print_success(f"All API keys for user {user_id} revoked successfully")
+
+    except Exception as e:
+        print_error(str(e))
+    finally:
+        db.close()
+        redis.close()
+
+@key_cli.command("info")
+def get_key_info(
+    key_id: UUID = typer.Argument(..., help="ID of key to get info for")
+):
+    """Get information about an API key."""
+    try:
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
+        api_key_service = APIKeyService(db, redis)
+
+        # Get key
+        key = api_key_service.get_key(str(key_id))
+        if not key:
+            print_error(f"API key {key_id} not found")
+            return
+
+        # Create table
+        table = Table("Field", "Value")
+        table.add_row("ID", key.id)
+        table.add_row("Name", key.name or "")
+        table.add_row("User ID", key.user_id)
+        table.add_row("Created", key.created_at.strftime("%Y-%m-%d %H:%M:%S"))
+        table.add_row(
+            "Expires",
+            key.expires_at.strftime("%Y-%m-%d %H:%M:%S") if key.expires_at else "Never"
+        )
+        table.add_row(
+            "Last Used",
+            key.last_used_at.strftime("%Y-%m-%d %H:%M:%S") if key.last_used_at else "Never"
+        )
+        table.add_row("Is Valid", str(not key.is_revoked()))
+
+        print_table(table)
+
+    except Exception as e:
+        print_error(str(e))
+    finally:
+        db.close()
+        redis.close()

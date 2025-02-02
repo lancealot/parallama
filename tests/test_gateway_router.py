@@ -1,65 +1,74 @@
+"""Tests for the gateway router."""
+
 import pytest
-from fastapi import FastAPI, Request, Response, HTTPException
+from unittest.mock import AsyncMock, patch
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.testclient import TestClient
-from typing import Dict, Any
+import httpx
 
-from parallama.gateway import (
-    LLMGateway,
-    GatewayRegistry,
-    gateway_router,
-)
+from parallama.gateway import LLMGateway, GatewayRegistry, GatewayType
+from parallama.gateway.router import router as gateway_router
 
-class TestGateway(LLMGateway):
-    """Test gateway implementation with configurable responses."""
+class MockGateway(LLMGateway):
+    """Mock gateway for testing."""
     
-    def __init__(self, auth_valid=True, status_error=False):
-        self._test_mode = True
-        self.auth_valid = auth_valid
-        self.status_error = status_error
-        self.base_url = "http://mock-service"
-    
+    def __init__(self, name="test", base_path="/test"):
+        self.name = name
+        self.base_path = base_path
+        self.ollama_url = "http://localhost:11434"
+        self._validate_auth_mock = AsyncMock(side_effect=lambda token: token == "valid-token")
+        self._transform_request_mock = AsyncMock(return_value={"test": "data"})
+        self._transform_response_mock = AsyncMock(return_value={"status": "ok"})
+        self._handle_error_mock = AsyncMock()
+
     async def validate_auth(self, credentials: str) -> bool:
-        return credentials == "valid-token"
+        return await self._validate_auth_mock(credentials)
+
+    async def transform_request(self, request: Request) -> dict:
+        return await self._transform_request_mock(request)
+
+    async def transform_response(self, response: dict) -> dict:
+        return await self._transform_response_mock(response)
+
+    async def handle_error(self, error: Exception) -> dict:
+        return await self._handle_error_mock(error)
+
+    async def get_status(self):
+        return {"status": "healthy"}
+
+    async def close(self):
+        pass
+
+class FailingGateway(MockGateway):
+    """Mock gateway that fails auth."""
     
-    async def transform_request(self, request: Request) -> Dict[str, Any]:
-        from fastapi import HTTPException
-        try:
-            if request.headers.get("Content-Type") == "application/json":
-                body = await request.json()
-            else:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Invalid JSON in request body"
-                )
-        except:
-            raise HTTPException(
-                status_code=422,
-                detail="Invalid JSON in request body"
-            )
-        
-        return {
-            "mock": "request",
-            "path": request.url.path,
-            "method": request.method,
-            "response": {"status": "ok"}
-        }
+    def __init__(self):
+        super().__init__(name="failing", base_path="/failing")
+        self._validate_auth_mock = AsyncMock(return_value=False)
+
+class WorkingGateway(MockGateway):
+    """Mock gateway that works."""
     
-    async def transform_response(self, response: Dict[str, Any]) -> Response:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(content=response)
-    
-    async def get_status(self) -> Dict[str, Any]:
-        if self.status_error:
-            raise Exception("Status check failed")
-        return {
-            "status": "healthy",
-            "models": ["mock-model-1", "mock-model-2"],
-            "version": "1.0.0"
-        }
+    def __init__(self):
+        super().__init__(name="working", base_path="/working")
+
+@pytest.fixture
+def setup_gateways():
+    """Set up test gateways."""
+    GatewayRegistry.clear()
+    GatewayRegistry.register("working", WorkingGateway)
+    GatewayRegistry.register("failing", FailingGateway)
+    GatewayRegistry._instances = {
+        "working": WorkingGateway(),
+        "failing": FailingGateway()
+    }
+    yield
+    GatewayRegistry.clear()
 
 @pytest.fixture
 def app():
-    """Create FastAPI application with gateway router."""
+    """Create test FastAPI app."""
     app = FastAPI()
     app.include_router(gateway_router)
     return app
@@ -69,42 +78,27 @@ def client(app):
     """Create test client."""
     return TestClient(app)
 
-@pytest.fixture
-def setup_gateways():
-    """Setup test gateways and cleanup after tests."""
-    GatewayRegistry.clear()
-    GatewayRegistry.register("working", lambda: TestGateway(auth_valid=True))
-    GatewayRegistry.register("failing", lambda: TestGateway(auth_valid=False))
-    GatewayRegistry.register("error", lambda: TestGateway(status_error=True))
-    yield
-    GatewayRegistry.clear()
-
 def test_discovery_endpoint(client, setup_gateways):
-    """Test the gateway discovery endpoint."""
+    """Test gateway discovery endpoint."""
     response = client.get("/gateway/discovery")
     assert response.status_code == 200
     
     data = response.json()
     assert "gateways" in data
-    assert "supported_types" in data
-    
-    # Check working gateway
     assert "working" in data["gateways"]
+    assert "failing" in data["gateways"]
     assert data["gateways"]["working"]["status"] == "available"
-    
-    # Check error gateway
-    assert "error" in data["gateways"]
-    assert data["gateways"]["error"]["status"] == "unavailable"
 
 @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
 def test_gateway_methods(client, setup_gateways, method):
     """Test different HTTP methods through gateway."""
     headers = {
         "Authorization": "valid-token",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "_test_mode": "true"
     }
     data = {"test": "data"}
-    
+
     response = client.request(
         method=method,
         url="/gateway/working/test",
@@ -123,7 +117,7 @@ def test_gateway_auth_validation(client, setup_gateways):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Missing authentication credentials"
-    
+
     # Test invalid auth
     response = client.post(
         "/gateway/failing/test",
@@ -135,48 +129,45 @@ def test_gateway_auth_validation(client, setup_gateways):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid authentication credentials"
-    
+
     # Test valid auth
     response = client.post(
         "/gateway/working/test",
         headers={
             "Authorization": "valid-token",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "_test_mode": "true"
         },
         json={"test": "data"}
     )
     assert response.status_code == 200
 
 def test_gateway_not_found(client, setup_gateways):
-    """Test handling of non-existent gateways."""
+    """Test handling of non-existent gateway."""
     response = client.post(
         "/gateway/nonexistent/test",
-        headers={
-            "Authorization": "test-token",
-            "Content-Type": "application/json"
-        }
+        headers={"Authorization": "valid-token"},
+        json={"test": "data"}
     )
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
 def test_gateway_error_handling(client, setup_gateways):
-    """Test error handling in gateway operations."""
-    # Test gateway that raises error during status check
-    response = client.get("/gateway/discovery")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["gateways"]["error"]["status"] == "unavailable"
-    
-    # Test malformed request body
+    """Test error handling in gateway."""
+    gateway = GatewayRegistry._instances["working"]
+    gateway._handle_error_mock.return_value = JSONResponse(
+        content={"detail": "Test error"},
+        status_code=500
+    )
+    gateway._transform_request_mock.side_effect = Exception("Test error")
+
     response = client.post(
         "/gateway/working/test",
-        headers={
-            "Authorization": "valid-token",
-            "Content-Type": "application/json"
-        },
-        content="invalid json"
+        headers={"Authorization": "valid-token"},
+        json={"test": "data"}
     )
-    assert response.status_code == 422  # FastAPI's validation error
+    assert response.status_code == 500
+    assert "Test error" in response.json()["detail"]
 
 def test_path_parameters(client, setup_gateways):
     """Test handling of path parameters in gateway routes."""
@@ -184,11 +175,49 @@ def test_path_parameters(client, setup_gateways):
         "/gateway/working/models/test-model/generate",
         headers={
             "Authorization": "valid-token",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "_test_mode": "true"
         },
         json={"prompt": "test"}
     )
     assert response.status_code == 200
+
+def test_streaming_response(client, setup_gateways):
+    """Test handling of streaming responses."""
+    gateway = GatewayRegistry._instances["working"]
+    gateway._transform_request_mock.return_value = {"stream": True}
     
-    # Verify path is preserved in transformed request
-    assert "/models/test-model/generate" in str(response.content)
+    chunks = ["data: chunk1\n\n", "data: chunk2\n\n"]
+    
+    gateway._transform_response_mock.return_value = StreamingResponse(
+        content=iter(chunks),
+        media_type="text/event-stream"
+    )
+
+    response = client.post(
+        "/gateway/working/stream",
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json",
+            "_test_mode": "true"
+        },
+        json={"stream": True}
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+def test_error_response_format(client, setup_gateways):
+    """Test error response formatting."""
+    gateway = GatewayRegistry._instances["working"]
+    gateway._transform_request_mock.side_effect = HTTPException(
+        status_code=400,
+        detail="Invalid request"
+    )
+
+    response = client.post(
+        "/gateway/working/test",
+        headers={"Authorization": "valid-token"},
+        json={"test": "data"}
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid request"

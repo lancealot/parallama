@@ -1,6 +1,8 @@
-from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, validator
+"""Gateway configuration models."""
+
 from enum import Enum
+from typing import Dict, Optional
+from pydantic import BaseModel, Field, field_validator
 
 class GatewayType(str, Enum):
     """Supported gateway types."""
@@ -8,70 +10,56 @@ class GatewayType(str, Enum):
     OPENAI = "openai"
 
 class RateLimitConfig(BaseModel):
-    """Rate limiting configuration for a gateway."""
-    requests_per_minute: int = Field(default=60, ge=1)
-    requests_per_hour: int = Field(default=1000, ge=1)
-    tokens_per_minute: Optional[int] = Field(default=None, ge=1)
-    tokens_per_hour: Optional[int] = Field(default=None, ge=1)
+    """Rate limit configuration."""
 
-    @validator("requests_per_hour")
-    def validate_hourly_rate(cls, v: int, values: Dict[str, Any]) -> int:
-        """Ensure hourly rate is greater than per-minute rate * 60."""
-        if "requests_per_minute" in values and v < values["requests_per_minute"] * 60:
-            raise ValueError("Hourly rate must be >= per-minute rate * 60")
+    requests_per_hour: Optional[int] = Field(None, ge=0)
+    requests_per_day: Optional[int] = Field(None, ge=0)
+    tokens_per_hour: Optional[int] = Field(None, ge=0)
+    tokens_per_day: Optional[int] = Field(None, ge=0)
+
+    @field_validator("requests_per_hour", "requests_per_day", "tokens_per_hour", "tokens_per_day")
+    @classmethod
+    def validate_limits(cls, v):
+        """Validate rate limits are non-negative."""
+        if v is not None and v < 0:
+            raise ValueError("Rate limits must be non-negative")
         return v
 
 class GatewayConfig(BaseModel):
-    """Base configuration for LLM gateways.
-    
-    This class defines the common configuration parameters that all
-    gateway implementations should support. Gateway-specific parameters
-    can be added through the custom_config field.
-    """
+    """Base gateway configuration."""
+
     name: str
-    type: GatewayType
-    enabled: bool = True
     base_path: str
-    host: Optional[str] = None
-    port: Optional[int] = None
-    rate_limits: RateLimitConfig = Field(default_factory=RateLimitConfig)
-    model_mappings: Dict[str, str] = Field(default_factory=dict)
-    custom_config: Dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+    rate_limits: Optional[RateLimitConfig] = None
 
-    class Config:
-        """Pydantic model configuration."""
-        use_enum_values = True
-
-    @validator("base_path")
-    def validate_base_path(cls, v: str) -> str:
-        """Ensure base_path starts with a forward slash."""
+    @field_validator("base_path")
+    @classmethod
+    def validate_base_path(cls, v):
+        """Validate base path starts with /."""
         if not v.startswith("/"):
-            v = f"/{v}"
-        return v.rstrip("/")  # Remove trailing slashes
-
-    def get_endpoint_url(self) -> Optional[str]:
-        """Construct the full endpoint URL if host is provided."""
-        if not self.host:
-            return None
-            
-        url = self.host.rstrip("/")
-        if self.port:
-            url = f"{url}:{self.port}"
-        return f"{url}{self.base_path}"
-
-    def get_model_mapping(self, model_name: str) -> str:
-        """Get the internal model name for a given external model name."""
-        return self.model_mappings.get(model_name, model_name)
+            raise ValueError("Base path must start with /")
+        return v
 
 class OllamaConfig(GatewayConfig):
-    """Ollama-specific gateway configuration."""
-    type: GatewayType = GatewayType.OLLAMA
-    base_path: str = "/ollama/v1"
-    host: str = "http://localhost"
-    port: int = 11434
+    """Ollama gateway configuration."""
+
+    ollama_url: str = "http://localhost:11434"
+    model_mappings: Dict[str, str] = {}
 
 class OpenAIConfig(GatewayConfig):
-    """OpenAI-compatible gateway configuration."""
-    type: GatewayType = GatewayType.OPENAI
-    base_path: str = "/openai/v1"
+    """OpenAI gateway configuration."""
+
     compatibility_mode: bool = True
+    model_mappings: Dict[str, str] = {
+        "gpt-3.5-turbo": "llama2",
+        "gpt-4": "llama2:70b"
+    }
+
+__all__ = [
+    'GatewayType',
+    'RateLimitConfig',
+    'GatewayConfig',
+    'OllamaConfig',
+    'OpenAIConfig'
+]

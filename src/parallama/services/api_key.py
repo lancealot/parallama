@@ -1,168 +1,330 @@
-"""API Key service for managing API key operations."""
+"""Service for managing API keys."""
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Union
+import secrets
+import string
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from redis import Redis
 
 from ..models.api_key import APIKey
-
+from ..core.exceptions import ResourceNotFoundError, DuplicateResourceError
 
 class APIKeyError(Exception):
-    """Base class for API key-related errors."""
+    """Base class for API key related errors."""
     pass
 
-
 class APIKeyService:
-    """Service for handling API key operations."""
+    """Service for managing API keys."""
 
     def __init__(self, db: Session, redis: Redis):
-        """Initialize the API key service."""
+        """Initialize API key service.
+        
+        Args:
+            db: Database session
+            redis: Redis client
+        """
         self.db = db
         self.redis = redis
+        self.key_length = 32
+        self.key_prefix = "pk_"
+        self.key_cache_ttl = 300  # 5 minutes
 
-    def create_key(self, user_id: str, description: str = None) -> str:
-        """
-        Create a new API key for a user.
-
-        Args:
-            user_id: The UUID of the user to create the key for.
-            description: Optional description for the key.
-
+    def _generate_key(self) -> str:
+        """Generate a random API key.
+        
         Returns:
-            str: The generated API key.
+            str: Generated API key
+        """
+        alphabet = string.ascii_letters + string.digits
+        key = ''.join(secrets.choice(alphabet) for _ in range(self.key_length))
+        return f"{self.key_prefix}{key}"
 
+    def create_key(
+        self,
+        user_id: str,
+        name: Optional[str] = None,
+        expires_at: Optional[datetime] = None
+    ) -> APIKey:
+        """Create a new API key.
+        
+        Args:
+            user_id: User ID
+            name: Optional key name
+            expires_at: Optional expiry date
+            
+        Returns:
+            APIKey: Created API key
+            
         Raises:
-            APIKeyError: If there is an error creating the key.
+            DuplicateResourceError: If key with name already exists for user
+            APIKeyError: If key creation fails
         """
         try:
-            # Generate new key
-            key = APIKey.generate_key()
+            # Check for duplicate name
+            if name:
+                existing = self.db.query(APIKey).filter(
+                    APIKey.user_id == user_id,
+                    APIKey.name == name
+                ).first()
+                if existing:
+                    raise DuplicateResourceError(
+                        f"API key with name '{name}' already exists for user {user_id}"
+                    )
+
+            # Generate key
+            key_value = self._generate_key()
             
-            # Create key model
-            key_model = APIKey(
+            # Create key
+            key = APIKey(
                 user_id=user_id,
-                description=description
+                name=name,
+                expires_at=expires_at,
+                created_at=datetime.now(timezone.utc)
             )
-            key_model.set_key(key)
+            key.set_key(key_value)
             
-            # Save to database
-            self.db.add(key_model)
-            self.db.commit()
-            
-            return key
+            try:
+                self.db.add(key)
+                self.db.commit()
+                return key
+            except Exception as e:
+                self.db.rollback()
+                raise APIKeyError(f"Failed to create API key: {str(e)}")
 
         except Exception as e:
-            self.db.rollback()
-            raise APIKeyError(f"Error creating API key: {str(e)}")
+            raise APIKeyError(f"Failed to create API key: {str(e)}")
+
+    def get_key(self, key_id: Union[str, UUID]) -> Optional[APIKey]:
+        """Get API key by ID.
+        
+        Args:
+            key_id: Key ID (string or UUID)
+            
+        Returns:
+            Optional[APIKey]: API key if found, None otherwise
+        """
+        key_id_str = str(key_id)
+        return self.db.query(APIKey).filter(APIKey.id == key_id_str).first()
+
+    def get_key_by_value(self, key: str) -> Optional[APIKey]:
+        """Get API key by value.
+        
+        Args:
+            key: API key value
+            
+        Returns:
+            Optional[APIKey]: API key if found, None otherwise
+        """
+        return self.db.query(APIKey).filter(APIKey.key == key).first()
+
+    def list_keys(
+        self,
+        user_id: Optional[Union[str, UUID]] = None,
+        include_expired: bool = False
+    ) -> List[APIKey]:
+        """List API keys.
+        
+        Args:
+            user_id: Optional user ID to filter by
+            include_expired: Whether to include expired keys
+            
+        Returns:
+            List[APIKey]: List of API keys
+            
+        Raises:
+            APIKeyError: If listing keys fails
+        """
+        try:
+            query = self.db.query(APIKey)
+
+            if user_id:
+                query = query.filter(APIKey.user_id == str(user_id))
+
+            if not include_expired:
+                query = query.filter(
+                    (APIKey.expires_at.is_(None)) |
+                    (APIKey.expires_at > datetime.now(timezone.utc))
+                )
+
+            return query.all()
+        except Exception as e:
+            raise APIKeyError(f"Failed to list API keys: {str(e)}")
 
     def verify_key(self, key: str) -> Optional[str]:
-        """
-        Verify an API key and return the user ID if valid.
-
+        """Verify an API key.
+        
         Args:
-            key: The API key to verify.
-
+            key: API key to verify
+            
         Returns:
-            Optional[UUID]: The user ID if the key is valid, None otherwise.
-
+            Optional[str]: User ID if key is valid, None otherwise
+            
         Raises:
-            APIKeyError: If there is an error verifying the key.
+            APIKeyError: If verification fails
         """
         try:
             # Check cache first
-            cache_key = f"apikey:{APIKey.hash_key(key)}"
-            cached_user_id = self.redis.get(cache_key)
-            
-            if cached_user_id:
-                return cached_user_id.decode()
-            
-            # Find key in database
-            key_model = self.db.query(APIKey).filter(
-                APIKey.key_hash == APIKey.hash_key(key),
-                APIKey.revoked_at.is_(None)
-            ).first()
-            
-            if not key_model:
-                return None
-            
-            if key_model:
-                try:
-                    # Update last used timestamp
-                    key_model.last_used_at = datetime.now(timezone.utc)
-                    self.db.commit()
-                    
-                    # Cache the result only after successful commit
-                    self.redis.setex(
-                        cache_key,
-                        300,  # Cache for 5 minutes
-                        str(key_model.user_id)
-                    )
-                    
-                    return key_model.user_id
-                except Exception as e:
-                    self.db.rollback()
-                    raise APIKeyError(f"Error verifying API key: {str(e)}")
-            
-            return None
+            cache_key = f"api_key:{key}"
+            try:
+                cached_user_id = self.redis.get(cache_key)
+                if cached_user_id:
+                    return cached_user_id.decode()
+            except Exception as e:
+                raise APIKeyError(f"Failed to check Redis cache: {str(e)}")
 
+            # Get key from database
+            api_key = self.get_key_by_value(key)
+            if not api_key:
+                return None
+
+            # Check if key is expired
+            if api_key.is_expired():
+                return None
+
+            # Check if key is revoked
+            if api_key.is_revoked():
+                return None
+
+            # Update last used timestamp
+            api_key.update_last_used()
+            try:
+                self.db.commit()
+            except Exception as e:
+                self.db.rollback()
+                raise APIKeyError(f"Failed to update last used timestamp: {str(e)}")
+
+            # Cache key
+            try:
+                self.redis.setex(
+                    cache_key,
+                    self.key_cache_ttl,
+                    api_key.user_id
+                )
+            except Exception as e:
+                # Log but don't fail if caching fails
+                print(f"Failed to cache API key: {str(e)}")
+
+            return api_key.user_id
+        except APIKeyError:
+            raise
         except Exception as e:
-            raise APIKeyError(f"Error verifying API key: {str(e)}")
+            raise APIKeyError(f"Failed to verify API key: {str(e)}")
 
     def revoke_key(self, key_id: str) -> None:
-        """
-        Revoke an API key.
-
+        """Revoke an API key.
+        
         Args:
-            key_id: The UUID of the key to revoke.
-
+            key_id: Key ID
+            
         Raises:
-            APIKeyError: If there is an error revoking the key.
+            ResourceNotFoundError: If key not found
+            APIKeyError: If revocation fails
         """
         try:
-            key_model = self.db.query(APIKey).filter(
-                APIKey.id == key_id,
-                APIKey.revoked_at.is_(None)
-            ).first()
-            
-            if key_model:
-                key_model.revoked_at = datetime.now(timezone.utc)
-                self.db.commit()
-                
-                # Invalidate cache
-                self.redis.delete(f"apikey:{key_model.key_hash}")
+            key = self.get_key(key_id)
+            if not key:
+                raise ResourceNotFoundError(f"API key {key_id} not found")
 
+            key.revoke()
+            try:
+                self.db.commit()
+            except Exception as e:
+                self.db.rollback()
+                raise APIKeyError(f"Failed to revoke API key: {str(e)}")
+
+            # Clear cache
+            try:
+                cache_key = f"api_key:{key.key}"
+                self.redis.delete(cache_key)
+            except Exception as e:
+                # Log but don't fail if cache clear fails
+                print(f"Failed to clear API key cache: {str(e)}")
+        except ResourceNotFoundError:
+            raise
+        except Exception as e:
+            raise APIKeyError(f"Failed to revoke API key: {str(e)}")
+
+    def revoke_all_user_keys(self, user_id: str) -> None:
+        """Revoke all API keys for a user.
+        
+        Args:
+            user_id: User ID
+            
+        Raises:
+            APIKeyError: If revocation fails
+        """
+        try:
+            keys = self.list_keys(user_id, include_expired=True)
+            for key in keys:
+                key.revoke()
+                try:
+                    cache_key = f"api_key:{key.key}"
+                    self.redis.delete(cache_key)
+                except Exception as e:
+                    # Log but don't fail if cache clear fails
+                    print(f"Failed to clear API key cache: {str(e)}")
+
+            self.db.commit()
         except Exception as e:
             self.db.rollback()
-            raise APIKeyError(f"Error revoking API key: {str(e)}")
+            raise APIKeyError(f"Failed to revoke user API keys: {str(e)}")
 
-    def list_keys(self, user_id: str) -> List[dict]:
-        """
-        List all API keys for a user.
-
+    def delete_key(self, key_id: str) -> None:
+        """Delete an API key.
+        
         Args:
-            user_id: The UUID of the user whose keys to list.
-
-        Returns:
-            List[dict]: List of API key metadata dictionaries.
-
+            key_id: Key ID
+            
         Raises:
-            APIKeyError: If there is an error listing the keys.
+            ResourceNotFoundError: If key not found
+            APIKeyError: If deletion fails
         """
         try:
-            keys = self.db.query(APIKey).filter(
-                APIKey.user_id == user_id
-            ).all()
-            
-            return [{
-                'id': key.id,
-                'created_at': key.created_at,
-                'last_used_at': key.last_used_at,
-                'description': key.description,
-                'revoked_at': key.revoked_at
-            } for key in keys]
+            key = self.get_key(key_id)
+            if not key:
+                raise ResourceNotFoundError(f"API key {key_id} not found")
 
+            # Clear cache
+            try:
+                cache_key = f"api_key:{key.key}"
+                self.redis.delete(cache_key)
+            except Exception as e:
+                # Log but don't fail if cache clear fails
+                print(f"Failed to clear API key cache: {str(e)}")
+
+            self.db.delete(key)
+            self.db.commit()
+        except ResourceNotFoundError:
+            raise
         except Exception as e:
-            raise APIKeyError(f"Error listing API keys: {str(e)}")
+            self.db.rollback()
+            raise APIKeyError(f"Failed to delete API key: {str(e)}")
+
+    def delete_all_user_keys(self, user_id: str) -> None:
+        """Delete all API keys for a user.
+        
+        Args:
+            user_id: User ID
+            
+        Raises:
+            APIKeyError: If deletion fails
+        """
+        try:
+            keys = self.list_keys(user_id, include_expired=True)
+            for key in keys:
+                try:
+                    cache_key = f"api_key:{key.key}"
+                    self.redis.delete(cache_key)
+                except Exception as e:
+                    # Log but don't fail if cache clear fails
+                    print(f"Failed to clear API key cache: {str(e)}")
+                self.db.delete(key)
+
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            raise APIKeyError(f"Failed to delete user API keys: {str(e)}")

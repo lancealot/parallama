@@ -22,8 +22,9 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
+env/
+.env
 
 # IDE
 .idea/
@@ -33,28 +34,56 @@ ENV/
 *~
 
 # Testing
-.pytest_cache/
 .coverage
 htmlcov/
+.pytest_cache/
 .tox/
+coverage.xml
+*.cover
+.hypothesis/
 
 # Logs
-*.log
 logs/
+*.log
+
+# Database
+*.db
+*.sqlite3
+*.sqlite
+
+# Redis
+dump.rdb
 
 # Environment variables
 .env
 .env.*
 
-# Development configuration
-config/config.dev.yaml
-config/db_password.dev
-
-# Distribution
-*.rpm
-*.deb
-*.tar.gz
-
-# System
+# System Files
 .DS_Store
 Thumbs.db
+
+# Build artifacts
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
+
+# Documentation
+docs/_build/
+docs/generated/
+
+# Temporary files
+*.bak
+*.tmp
+*.temp
+
+# Local development
+local_settings.py
+db.sqlite3
+media/
+
+# Configuration files with sensitive data
+config/db_password.dev
+config/jwt_secret.dev

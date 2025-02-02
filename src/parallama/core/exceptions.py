@@ -1,75 +1,89 @@
-"""Custom exceptions for the Parallama application."""
+"""Core exceptions for the application."""
 
 class ParallamaError(Exception):
-    """Base class for all Parallama exceptions."""
+    """Base class for all application errors."""
     pass
 
+class DatabaseError(ParallamaError):
+    """Database-related errors."""
+    pass
 
 class AuthenticationError(ParallamaError):
-    """Base class for authentication-related errors."""
+    """Authentication-related errors."""
     pass
 
-
-class TokenError(AuthenticationError):
-    """Error raised for token-related issues."""
+class AuthorizationError(ParallamaError):
+    """Authorization-related errors."""
     pass
-
-
-class ResourceError(ParallamaError):
-    """Base class for resource-related errors."""
-    pass
-
-
-class ResourceNotFoundError(ResourceError):
-    """Error raised when a requested resource is not found."""
-    pass
-
-
-class DuplicateResourceError(ResourceError):
-    """Error raised when attempting to create a duplicate resource."""
-    pass
-
-
-class ValidationError(ParallamaError):
-    """Error raised for validation failures."""
-    pass
-
 
 class RateLimitError(ParallamaError):
-    """Error raised when rate limits are exceeded."""
+    """Rate limit-related errors."""
     pass
-
-
-class ConfigurationError(ParallamaError):
-    """Error raised for configuration-related issues."""
-    pass
-
 
 class GatewayError(ParallamaError):
-    """Base class for gateway-related errors."""
+    """Gateway-related errors."""
     pass
 
-
-class GatewayNotFoundError(GatewayError):
-    """Error raised when a requested gateway is not found."""
+class ConfigurationError(ParallamaError):
+    """Configuration-related errors."""
     pass
 
-
-class GatewayConfigurationError(GatewayError):
-    """Error raised for gateway configuration issues."""
+class ValidationError(ParallamaError):
+    """Validation-related errors."""
     pass
 
-
-class ModelError(ParallamaError):
-    """Base class for model-related errors."""
+class ServiceError(ParallamaError):
+    """Service-related errors."""
     pass
 
-
-class ModelNotFoundError(ModelError):
-    """Error raised when a requested model is not found."""
+class NotFoundError(ParallamaError):
+    """Resource not found errors."""
     pass
 
-
-class ModelConfigurationError(ModelError):
-    """Error raised for model configuration issues."""
+class ResourceNotFoundError(NotFoundError):
+    """Specific resource not found errors."""
     pass
+
+class DuplicateError(ParallamaError):
+    """Duplicate resource errors."""
+    pass
+
+class DuplicateResourceError(DuplicateError):
+    """Specific duplicate resource errors."""
+    pass
+
+class ConnectionError(ParallamaError):
+    """Connection-related errors."""
+    pass
+
+class TimeoutError(ParallamaError):
+    """Timeout-related errors."""
+    pass
+
+class LLMServiceError(ParallamaError):
+    """LLM service-related errors."""
+    pass
+
+class CLIError(ParallamaError):
+    """CLI-related errors."""
+    pass
+
+__all__ = [
+    'ParallamaError',
+    'DatabaseError',
+    'AuthenticationError',
+    'AuthorizationError',
+    'RateLimitError',
+    'GatewayError',
+    'ConfigurationError',
+    'ValidationError',
+    'ServiceError',
+    'NotFoundError',
+    'ResourceNotFoundError',
+    'DuplicateError',
+    'DuplicateResourceError',
+    'ConnectionError',
+    'TimeoutError',
+    'LLMServiceError',
+    'CLIError'
+]

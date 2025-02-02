@@ -1,214 +1,216 @@
 """Tests for the API key service."""
 
+import uuid
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, create_autospec
-from uuid import UUID, uuid4
+from unittest.mock import MagicMock, patch
 
 import pytest
 from redis import Redis
 from sqlalchemy.orm import Session
 
-from parallama.services.api_key import APIKeyService, APIKeyError
 from parallama.models.api_key import APIKey
-
-
-@pytest.fixture
-def test_user_id() -> UUID:
-    """Fixture providing a test user ID."""
-    return uuid4()
-
-
-@pytest.fixture
-def mock_db():
-    """Fixture providing a mock database session."""
-    db = create_autospec(Session)
-    
-    # Setup query mock
-    query_mock = MagicMock()
-    query_mock.filter.return_value.first.return_value = None
-    db.query.return_value = query_mock
-    
-    return db
-
-
-@pytest.fixture
-def mock_redis():
-    """Fixture providing a mock Redis client."""
-    redis = MagicMock(spec=Redis)
-    redis.get = MagicMock(return_value=None)
-    redis.setex = MagicMock()
-    redis.delete = MagicMock()
-    return redis
-
-
-@pytest.fixture
-def api_key_service(mock_db, mock_redis) -> APIKeyService:
-    """Fixture providing an APIKeyService instance."""
-    return APIKeyService(mock_db, mock_redis)
-
+from parallama.services.api_key import APIKeyService, APIKeyError
+from parallama.core.exceptions import ResourceNotFoundError
 
 class TestAPIKeyService:
-    """Test cases for API key functionality."""
+    """Test cases for API key service."""
 
-    @pytest.fixture
-    def mock_api_key_model(self, test_user_id):
-        """Fixture providing a mock APIKey model."""
-        key_model = MagicMock(spec=APIKey)
-        key_model.id = uuid4()
-        key_model.user_id = test_user_id
-        key_model.key_hash = "test_hash"
-        key_model.description = "Test key"
-        key_model.created_at = datetime.now(timezone.utc)
-        key_model.last_used_at = None
-        key_model.revoked_at = None
-        return key_model
-
-    def test_create_key(self, api_key_service, test_user_id, mock_db):
-        """Test creating an API key."""
+    def test_create_key(self, db_session: Session, mock_redis: Redis):
+        """Test creating a new API key."""
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
         description = "Test key"
-        key = api_key_service.create_key(test_user_id, description)
-        
-        # Verify key format
-        assert key.startswith("pk_live_")
-        assert len(key) > 20
-        
-        # Verify model was saved
-        assert mock_db.add.called
-        assert mock_db.commit.called
 
-    def test_create_key_error(self, api_key_service, test_user_id, mock_db):
-        """Test error handling in key creation."""
-        mock_db.commit.side_effect = Exception("Database error")
-        
-        with pytest.raises(APIKeyError, match="Error creating API key"):
-            api_key_service.create_key(test_user_id)
-        
-        assert mock_db.rollback.called
+        key = service.create_key(user_id, name=description)
+        assert key.key.startswith("pk_")
 
-    def test_verify_key_cached(self, api_key_service, test_user_id, mock_redis):
-        """Test verifying a key that's in cache."""
+        # Check database record
+        key_model = db_session.query(APIKey).first()
+        assert key_model is not None
+        assert key_model.user_id == str(user_id)
+        assert key_model.name == description
+        assert key_model.revoked_at is None
+
+    def test_create_key_error(self, db_session: Session, mock_redis: Redis):
+        """Test error handling when creating a key."""
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
+
+        # Mock database error
+        db_session.add = MagicMock(side_effect=Exception("Database error"))
+
+        with pytest.raises(APIKeyError) as exc:
+            service.create_key(user_id)
+        assert "Database error" in str(exc.value)
+
+    def test_verify_key_cached(self, db_session: Session, mock_redis: Redis):
+        """Test verifying a key that is cached."""
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
         key = "pk_live_test_key"
-        mock_redis.get.return_value = str(test_user_id).encode()
-        
-        user_id = api_key_service.verify_key(key)
-        
-        assert user_id == test_user_id
+        api_key = APIKey()
+        api_key.set_key(key)
+        key_hash = api_key.key_hash
 
-    def test_verify_key_from_db(
-        self, api_key_service, test_user_id, mock_db, mock_redis, mock_api_key_model
-    ):
+        # Mock cached key
+        mock_redis.get.return_value = str(user_id).encode()
+
+        result = service.verify_key(key)
+        assert result == str(user_id)
+
+        # Check Redis was queried
+        mock_redis.get.assert_called_once_with(f"api_key:{key}")
+
+    def test_verify_key_from_db(self, db_session: Session, mock_redis: Redis):
         """Test verifying a key from database."""
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
         key = "pk_live_test_key"
-        
-        # Setup mock DB query
-        mock_query = MagicMock()
-        mock_query.filter.return_value.first.return_value = mock_api_key_model
-        mock_db.query.return_value = mock_query
-        
-        user_id = api_key_service.verify_key(key)
-        
-        assert user_id == test_user_id
-        assert mock_redis.setex.called  # Verify result was cached
-        assert mock_db.commit.called  # Verify last_used_at was updated
 
-    def test_verify_key_invalid(self, api_key_service):
+        # Create key in database
+        key_model = APIKey(
+            id=uuid.uuid4(),
+            user_id=str(user_id),
+            created_at=datetime.now(timezone.utc)
+        )
+        key_model.set_key(key)
+        db_session.add(key_model)
+        db_session.commit()
+
+        # Mock Redis miss
+        mock_redis.get.return_value = None
+
+        result = service.verify_key(key)
+        assert result == str(user_id)
+
+        # Check key was cached
+        mock_redis.setex.assert_called_once_with(
+            f"api_key:{key_model.key}",
+            300,
+            str(user_id)
+        )
+
+    def test_verify_key_invalid(self, db_session: Session, mock_redis: Redis):
         """Test verifying an invalid key."""
+        service = APIKeyService(db_session, mock_redis)
         key = "pk_live_invalid_key"
-        
-        user_id = api_key_service.verify_key(key)
-        
-        assert user_id is None
 
-    def test_verify_key_error(self, api_key_service, mock_db, mock_api_key_model):
-        """Test error handling in key verification."""
+        # Mock Redis miss
+        mock_redis.get.return_value = None
+
+        result = service.verify_key(key)
+        assert result is None
+
+    def test_verify_key_error(self, db_session: Session, mock_redis: Redis):
+        """Test error handling when verifying a key."""
+        service = APIKeyService(db_session, mock_redis)
         key = "pk_live_test_key"
-        
-        # Setup mock DB query to return a key model
-        mock_query = MagicMock()
-        mock_query.filter.return_value.first.return_value = mock_api_key_model
-        mock_db.query.return_value = mock_query
-        
-        # Setup commit to fail
-        mock_db.commit.side_effect = Exception("Database error")
-        
-        with pytest.raises(APIKeyError, match="Error verifying API key"):
-            api_key_service.verify_key(key)
-        
-        assert mock_db.rollback.called
 
-    def test_revoke_key(
-        self, api_key_service, mock_db, mock_redis, mock_api_key_model
-    ):
+        # Mock Redis error
+        mock_redis.get.side_effect = Exception("Redis error")
+
+        with pytest.raises(APIKeyError) as exc:
+            service.verify_key(key)
+        assert "Redis error" in str(exc.value)
+
+    def test_revoke_key(self, db_session: Session, mock_redis: Redis):
         """Test revoking an API key."""
-        key_id = uuid4()
-        
-        # Setup mock DB query
-        mock_query = MagicMock()
-        mock_query.filter.return_value.first.return_value = mock_api_key_model
-        mock_db.query.return_value = mock_query
-        
-        api_key_service.revoke_key(key_id)
-        
-        assert mock_api_key_model.revoked_at is not None
-        assert mock_db.commit.called
-        assert mock_redis.delete.called  # Verify cache was invalidated
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
+        key_id = uuid.uuid4()
+        key = "pk_live_test_key"
 
-    def test_revoke_key_not_found(self, api_key_service):
+        # Create key in database
+        key_model = APIKey(
+            id=key_id,
+            user_id=str(user_id),
+            created_at=datetime.now(timezone.utc)
+        )
+        key_model.set_key(key)
+        db_session.add(key_model)
+        db_session.commit()
+
+        service.revoke_key(key_id)
+
+        # Check key was revoked
+        key_model = db_session.get(APIKey, str(key_id))
+        assert key_model.revoked_at is not None
+
+        # Check cache was invalidated
+        mock_redis.delete.assert_called_once_with(f"api_key:{key_model.key}")
+
+    def test_revoke_key_not_found(self, db_session: Session, mock_redis: Redis):
         """Test revoking a non-existent key."""
-        key_id = uuid4()
-        
-        # Should not raise an error
-        api_key_service.revoke_key(key_id)
+        service = APIKeyService(db_session, mock_redis)
+        key_id = uuid.uuid4()
 
-    def test_revoke_key_error(self, api_key_service, mock_db, mock_api_key_model):
-        """Test error handling in key revocation."""
-        key_id = uuid4()
-        
-        # Setup mock DB query
-        mock_query = MagicMock()
-        mock_query.filter.return_value.first.return_value = mock_api_key_model
-        mock_db.query.return_value = mock_query
-        
-        mock_db.commit.side_effect = Exception("Database error")
-        
-        with pytest.raises(APIKeyError, match="Error revoking API key"):
-            api_key_service.revoke_key(key_id)
-        
-        assert mock_db.rollback.called
+        with pytest.raises(ResourceNotFoundError) as exc:
+            service.revoke_key(key_id)
+        assert str(key_id) in str(exc.value)
 
-    def test_list_keys(
-        self, api_key_service, test_user_id, mock_db, mock_api_key_model
-    ):
-        """Test listing a user's API keys."""
-        # Setup mock DB query
-        mock_query = MagicMock()
-        mock_query.filter.return_value.all.return_value = [mock_api_key_model]
-        mock_db.query.return_value = mock_query
-        
-        keys = api_key_service.list_keys(test_user_id)
-        
-        assert len(keys) == 1
-        key = keys[0]
-        assert key["id"] == mock_api_key_model.id
-        assert key["created_at"] == mock_api_key_model.created_at
-        assert key["last_used_at"] == mock_api_key_model.last_used_at
-        assert key["description"] == mock_api_key_model.description
-        assert key["revoked_at"] == mock_api_key_model.revoked_at
+    def test_revoke_key_error(self, db_session: Session, mock_redis: Redis):
+        """Test error handling when revoking a key."""
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
+        key_id = uuid.uuid4()
+        key = "pk_live_test_key"
 
-    def test_list_keys_empty(self, api_key_service, test_user_id, mock_db):
+        # Create key in database
+        key_model = APIKey(
+            id=key_id,
+            user_id=str(user_id),
+            created_at=datetime.now(timezone.utc)
+        )
+        key_model.set_key(key)
+        db_session.add(key_model)
+        db_session.commit()
+
+        # Mock database error
+        db_session.commit = MagicMock(side_effect=Exception("Database error"))
+
+        with pytest.raises(APIKeyError) as exc:
+            service.revoke_key(key_id)
+        assert "Database error" in str(exc.value)
+
+    def test_list_keys(self, db_session: Session, mock_redis: Redis):
+        """Test listing API keys for a user."""
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
+
+        # Create some keys
+        keys = []
+        for i in range(3):
+            key_model = APIKey(
+                id=uuid.uuid4(),
+                user_id=str(user_id),
+                created_at=datetime.now(timezone.utc)
+            )
+            key_model.set_key(f"key_{i}")
+            keys.append(key_model)
+            db_session.add(key_model)
+        db_session.commit()
+
+        result = service.list_keys(user_id)
+        assert len(result) == 3
+        for key in result:
+            assert key.id in [str(k.id) for k in keys]
+
+    def test_list_keys_empty(self, db_session: Session, mock_redis: Redis):
         """Test listing keys when user has none."""
-        # Setup mock DB query to return empty list
-        mock_query = MagicMock()
-        mock_query.filter.return_value.all.return_value = []
-        mock_db.query.return_value = mock_query
-        
-        keys = api_key_service.list_keys(test_user_id)
-        
-        assert len(keys) == 0
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
 
-    def test_list_keys_error(self, api_key_service, test_user_id, mock_db):
-        """Test error handling in key listing."""
-        mock_db.query.side_effect = Exception("Database error")
-        
-        with pytest.raises(APIKeyError, match="Error listing API keys"):
-            api_key_service.list_keys(test_user_id)
+        result = service.list_keys(user_id)
+        assert result == []
+
+    def test_list_keys_error(self, db_session: Session, mock_redis: Redis):
+        """Test error handling when listing keys."""
+        service = APIKeyService(db_session, mock_redis)
+        user_id = uuid.uuid4()
+
+        # Mock database error
+        db_session.query = MagicMock(side_effect=Exception("Database error"))
+
+        with pytest.raises(APIKeyError) as exc:
+            service.list_keys(user_id)
+        assert "Database error" in str(exc.value)

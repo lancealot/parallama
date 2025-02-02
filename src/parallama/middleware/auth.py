@@ -1,317 +1,298 @@
-"""Authentication and authorization middleware."""
+"""Authentication middleware for API endpoints."""
 
 from functools import wraps
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Request, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from starlette.status import (
-    HTTP_401_UNAUTHORIZED,
-    HTTP_403_FORBIDDEN
-)
 
-from ..core.permissions import Permission
 from ..services.auth import AuthService, TokenError
 from ..services.api_key import APIKeyService
-from ..services.role import RoleService
-from ..core.database import get_db
-from ..core.redis import get_redis
+from ..core.database import get_db, get_redis
+from ..models.user import User
 
 security = HTTPBearer()
 
-def get_auth_service(
-    db: Session = Depends(get_db),
-    redis = Depends(get_redis)
-) -> AuthService:
-    """Dependency for getting the auth service."""
-    return AuthService(db, redis)
-
-def get_api_key_service(
-    db: Session = Depends(get_db),
-    redis = Depends(get_redis)
-) -> APIKeyService:
-    """Dependency for getting the API key service."""
-    return APIKeyService(db, redis)
-
-def get_role_service(
-    db: Session = Depends(get_db)
-) -> RoleService:
-    """Dependency for getting the role service."""
-    return RoleService(db)
-
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Security(security),
-    auth_service: AuthService = Depends(get_auth_service),
-    api_key_service: APIKeyService = Depends(get_api_key_service)
-) -> UUID:
-    """
-    Get the current user ID from either JWT token or API key.
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> User:
+    """Get current user from token or API key.
     
     Args:
-        credentials: The authorization credentials
-        auth_service: The authentication service
-        api_key_service: The API key service
+        credentials: Authorization credentials
         
     Returns:
-        UUID: The user ID
+        User: Authenticated user
         
     Raises:
         HTTPException: If authentication fails
     """
     try:
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
+        auth_service = AuthService(db, redis)
+        api_key_service = APIKeyService(db, redis)
+
+        # Check token type
+        auth_type = credentials.scheme.lower()
         token = credentials.credentials
+
+        if auth_type == "bearer":
+            # Verify JWT token
+            user_id, _ = auth_service.verify_token(token)
+        elif auth_type == "apikey":
+            # Verify API key
+            user_id = api_key_service.verify_key(token)
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication scheme"
+            )
+
+        # Get user
+        user = db.query(User).filter(User.id == str(user_id)).first()
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        return user
+
+    except TokenError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Authentication error: {str(e)}"
+        )
+    finally:
+        db.close()
+        redis.close()
+
+async def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> Optional[UUID]:
+    """Get current user ID from token or API key.
+    
+    Args:
+        credentials: Authorization credentials
         
-        # Try JWT token first
-        try:
+    Returns:
+        Optional[UUID]: User ID if authenticated, None otherwise
+        
+    Raises:
+        HTTPException: If authentication fails
+    """
+    try:
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
+        auth_service = AuthService(db, redis)
+        api_key_service = APIKeyService(db, redis)
+
+        # Check token type
+        auth_type = credentials.scheme.lower()
+        token = credentials.credentials
+
+        if auth_type == "bearer":
+            # Verify JWT token
             user_id, _ = auth_service.verify_token(token)
             return user_id
-        except TokenError:
-            # If JWT verification fails, try API key
-            try:
-                user_id = api_key_service.verify_key(token)
-                return user_id
-            except Exception as e:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid authentication credentials",
-                    headers={"WWW-Authenticate": "Bearer"}
-                )
-                
+        elif auth_type == "apikey":
+            # Verify API key
+            user_id = api_key_service.verify_key(token)
+            return user_id
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication scheme"
+            )
+
+    except TokenError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"}
+            status_code=500,
+            detail=f"Authentication error: {str(e)}"
         )
+    finally:
+        db.close()
+        redis.close()
 
 async def get_current_user_permissions(
-    credentials: HTTPAuthorizationCredentials = Security(security),
-    auth_service: AuthService = Depends(get_auth_service),
-    api_key_service: APIKeyService = Depends(get_api_key_service),
-    role_service: RoleService = Depends(get_role_service)
-) -> tuple[UUID, List[str]]:
-    """
-    Get the current user ID and permissions from either JWT token or API key.
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> Optional[List[str]]:
+    """Get current user permissions from token.
     
     Args:
-        credentials: The authorization credentials
-        auth_service: The authentication service
-        api_key_service: The API key service
-        role_service: The role service
+        credentials: Authorization credentials
         
     Returns:
-        tuple[UUID, List[str]]: The user ID and list of permissions
+        Optional[List[str]]: User permissions if authenticated with JWT, None otherwise
         
     Raises:
         HTTPException: If authentication fails
     """
     try:
+        # Get services
+        db = next(get_db())
+        redis = next(get_redis())
+        auth_service = AuthService(db, redis)
+
+        # Check token type
+        auth_type = credentials.scheme.lower()
         token = credentials.credentials
-        
-        # Try JWT token first
-        try:
-            user_id, permissions = auth_service.verify_token(token)
-            return user_id, permissions
-        except TokenError:
-            # If JWT verification fails, try API key
-            try:
-                user_id = api_key_service.verify_key(token)
-                # Get permissions from roles for API key auth
-                roles = role_service.get_user_roles(user_id)
-                permissions = set()
-                for role in roles:
-                    permissions.update(role.get_permissions())
-                return user_id, list(permissions)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid authentication credentials",
-                    headers={"WWW-Authenticate": "Bearer"}
-                )
-                
+
+        if auth_type == "bearer":
+            # Verify JWT token and get permissions
+            _, permissions = auth_service.verify_token(token)
+            return permissions
+        else:
+            return None
+
+    except TokenError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"}
+            status_code=500,
+            detail=f"Authentication error: {str(e)}"
         )
+    finally:
+        db.close()
+        redis.close()
 
-def requires_permission(permission: Permission) -> Callable:
-    """
-    Decorator for requiring a specific permission to access an endpoint.
+def requires_permission(permission: str) -> Callable:
+    """Decorator to require a specific permission.
     
     Args:
-        permission: The required permission
+        permission: Required permission
         
     Returns:
-        Callable: The decorated function
-        
-    Example:
-        @app.get("/admin")
-        @requires_permission(Permission.MANAGE_USERS)
-        async def admin_endpoint(user_id: UUID = Depends(get_current_user)):
-            return {"message": "Admin access granted"}
+        Callable: Decorator function
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Get user_id and permissions from kwargs
-            user_id = kwargs.get("user_id")
-            if not user_id:
+            request = kwargs.get("request")
+            if not request:
                 for arg in args:
-                    if isinstance(arg, UUID):
-                        user_id = arg
+                    if isinstance(arg, Request):
+                        request = arg
                         break
-            
-            if not user_id:
+
+            if not request:
                 raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Authentication required"
+                    status_code=500,
+                    detail="Request object not found"
                 )
-            
-            # Get role service from kwargs
-            role_service = kwargs.get("role_service")
-            if not role_service:
-                # Fallback to creating new role service if not provided
-                db = kwargs.get("db")
-                if not db:
-                    db = next(get_db())
-                role_service = RoleService(db)
-            
+
+            # Get user permissions
+            permissions = await get_current_user_permissions(
+                await security(request)
+            )
+
             # Check permission
-            if not role_service.check_permission(user_id, permission):
+            if not permissions or permission not in permissions:
                 raise HTTPException(
-                    status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Missing required permission: {permission}"
+                    status_code=403,
+                    detail="Permission denied"
                 )
-            
-            # Remove role_service from kwargs before calling the wrapped function
-            kwargs_copy = kwargs.copy()
-            kwargs_copy.pop('role_service', None)
-            return await func(*args, **kwargs_copy)
+
+            return await func(*args, **kwargs)
         return wrapper
     return decorator
 
-def requires_any_permission(permissions: List[Permission]) -> Callable:
-    """
-    Decorator for requiring any of the specified permissions to access an endpoint.
+def requires_any_permission(permissions: List[str]) -> Callable:
+    """Decorator to require any of the specified permissions.
     
     Args:
         permissions: List of permissions, any of which grant access
         
     Returns:
-        Callable: The decorated function
-        
-    Example:
-        @app.get("/gateway")
-        @requires_any_permission([Permission.USE_OLLAMA, Permission.USE_OPENAI])
-        async def gateway_endpoint(user_id: UUID = Depends(get_current_user)):
-            return {"message": "Gateway access granted"}
+        Callable: Decorator function
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Get user_id from kwargs
-            user_id = kwargs.get("user_id")
-            if not user_id:
+            request = kwargs.get("request")
+            if not request:
                 for arg in args:
-                    if isinstance(arg, UUID):
-                        user_id = arg
+                    if isinstance(arg, Request):
+                        request = arg
                         break
-            
-            if not user_id:
+
+            if not request:
                 raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Authentication required"
+                    status_code=500,
+                    detail="Request object not found"
                 )
-            
-            # Get role service from kwargs
-            role_service = kwargs.get("role_service")
-            if not role_service:
-                # Fallback to creating new role service if not provided
-                db = kwargs.get("db")
-                if not db:
-                    db = next(get_db())
-                role_service = RoleService(db)
-            
-            # Check if user has any of the required permissions
-            has_permission = any(
-                role_service.check_permission(user_id, p)
-                for p in permissions
+
+            # Get user permissions
+            user_permissions = await get_current_user_permissions(
+                await security(request)
             )
-            
-            if not has_permission:
+
+            # Check permissions
+            if not user_permissions or not any(p in user_permissions for p in permissions):
                 raise HTTPException(
-                    status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Missing required permissions: {[str(p) for p in permissions]}"
+                    status_code=403,
+                    detail="Permission denied"
                 )
-            
-            # Remove role_service from kwargs before calling the wrapped function
-            kwargs_copy = kwargs.copy()
-            kwargs_copy.pop('role_service', None)
-            return await func(*args, **kwargs_copy)
+
+            return await func(*args, **kwargs)
         return wrapper
     return decorator
 
-def requires_all_permissions(permissions: List[Permission]) -> Callable:
-    """
-    Decorator for requiring all specified permissions to access an endpoint.
+def requires_all_permissions(permissions: List[str]) -> Callable:
+    """Decorator to require all specified permissions.
     
     Args:
         permissions: List of permissions, all of which are required
         
     Returns:
-        Callable: The decorated function
-        
-    Example:
-        @app.post("/models")
-        @requires_all_permissions([Permission.USE_OLLAMA, Permission.MANAGE_MODELS])
-        async def create_model(user_id: UUID = Depends(get_current_user)):
-            return {"message": "Model created"}
+        Callable: Decorator function
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Get user_id from kwargs
-            user_id = kwargs.get("user_id")
-            if not user_id:
+            request = kwargs.get("request")
+            if not request:
                 for arg in args:
-                    if isinstance(arg, UUID):
-                        user_id = arg
+                    if isinstance(arg, Request):
+                        request = arg
                         break
-            
-            if not user_id:
+
+            if not request:
                 raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Authentication required"
+                    status_code=500,
+                    detail="Request object not found"
                 )
-            
-            # Get role service from kwargs
-            role_service = kwargs.get("role_service")
-            if not role_service:
-                # Fallback to creating new role service if not provided
-                db = kwargs.get("db")
-                if not db:
-                    db = next(get_db())
-                role_service = RoleService(db)
-            
-            # Check if user has all required permissions
-            has_all_permissions = all(
-                role_service.check_permission(user_id, p)
-                for p in permissions
+
+            # Get user permissions
+            user_permissions = await get_current_user_permissions(
+                await security(request)
             )
-            
-            if not has_all_permissions:
+
+            # Check permissions
+            if not user_permissions or not all(p in user_permissions for p in permissions):
                 raise HTTPException(
-                    status_code=HTTP_403_FORBIDDEN,
-                    detail=f"Missing required permissions: {[str(p) for p in permissions]}"
+                    status_code=403,
+                    detail="Permission denied"
                 )
-            
-            # Remove role_service from kwargs before calling the wrapped function
-            kwargs_copy = kwargs.copy()
-            kwargs_copy.pop('role_service', None)
-            return await func(*args, **kwargs_copy)
+
+            return await func(*args, **kwargs)
         return wrapper
     return decorator

@@ -1,165 +1,175 @@
-from datetime import datetime
+"""Role service for managing user roles and permissions."""
+
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
-from parallama.core.permissions import Permission, DefaultRoles
-from parallama.models.role import Role
-from parallama.models.user_role import UserRole
-from parallama.core.exceptions import ResourceNotFoundError, DuplicateResourceError
+from ..models.user_role import UserRole
+from ..core.exceptions import ResourceNotFoundError, DuplicateResourceError
 
 class RoleService:
-    """
-    Service for managing roles and user role assignments.
-    """
-    def __init__(self, db: Session):
-        self.db = db
+    """Service for managing user roles."""
 
-    def create_role(self, name: str, permissions: List[Permission], description: str = None) -> Role:
-        """
-        Create a new role with specified permissions.
+    def __init__(self, db: Session):
+        """Initialize role service.
         
         Args:
-            name: Unique name for the role
-            permissions: List of permissions to assign to the role
-            description: Optional description of the role
+            db: Database session
+        """
+        self.db = db
+
+    def create_role(self, name: str, permissions: List[str]) -> UserRole:
+        """Create a new role.
+        
+        Args:
+            name: Role name
+            permissions: List of permission names
             
         Returns:
-            Role: The created role
+            UserRole: Created role
             
         Raises:
-            DuplicateResourceError: If a role with the given name already exists
+            DuplicateResourceError: If role with name already exists
         """
         try:
-            role = Role(name=name, permissions=permissions, description=description)
+            role = UserRole(
+                name=name,
+                permissions=permissions,
+                created_at=datetime.now(timezone.utc)
+            )
             self.db.add(role)
             self.db.commit()
             return role
         except IntegrityError:
             self.db.rollback()
-            raise DuplicateResourceError(f"Role with name '{name}' already exists")
+            raise DuplicateResourceError(f"Role '{name}' already exists")
 
-    def get_role(self, role_id: str) -> Optional[Role]:
-        """
-        Get a role by its ID.
+    def get_role(self, role_id: UUID) -> Optional[UserRole]:
+        """Get role by ID.
         
         Args:
-            role_id: UUID of the role to retrieve
+            role_id: Role ID
             
         Returns:
-            Optional[Role]: The role if found, None otherwise
+            Optional[UserRole]: Role if found, None otherwise
         """
-        return self.db.query(Role).filter(Role.id == role_id).first()
+        return self.db.query(UserRole).filter(UserRole.id == str(role_id)).first()
 
-    def get_role_by_name(self, name: str) -> Optional[Role]:
-        """
-        Get a role by its name.
+    def get_role_by_name(self, name: str) -> Optional[UserRole]:
+        """Get role by name.
         
         Args:
-            name: Name of the role to retrieve
+            name: Role name
             
         Returns:
-            Optional[Role]: The role if found, None otherwise
+            Optional[UserRole]: Role if found, None otherwise
         """
-        return self.db.query(Role).filter(Role.name == name).first()
+        return self.db.query(UserRole).filter(UserRole.name == name).first()
 
-    def assign_role_to_user(
-        self, 
-        user_id: str, 
-        role_id: str, 
-        assigned_by: Optional[str] = None,
-        expires_at: Optional[datetime] = None
+    def list_roles(self) -> List[UserRole]:
+        """List all roles.
+        
+        Returns:
+            List[UserRole]: List of roles
+        """
+        return self.db.query(UserRole).all()
+
+    def update_role(
+        self,
+        role_id: UUID,
+        name: Optional[str] = None,
+        permissions: Optional[List[str]] = None
     ) -> UserRole:
-        """
-        Assign a role to a user.
+        """Update role.
         
         Args:
-            user_id: ID of the user to assign the role to
-            role_id: ID of the role to assign
-            assigned_by: Optional ID of the user making the assignment
-            expires_at: Optional expiration date for the role assignment
+            role_id: Role ID
+            name: New role name
+            permissions: New permissions list
             
         Returns:
-            UserRole: The created user role assignment
+            UserRole: Updated role
             
         Raises:
-            ResourceNotFoundError: If the role doesn't exist
-            DuplicateResourceError: If the user already has this role
+            ResourceNotFoundError: If role not found
+            DuplicateResourceError: If new name already exists
         """
         role = self.get_role(role_id)
         if not role:
-            raise ResourceNotFoundError(f"Role with ID '{role_id}' not found")
+            raise ResourceNotFoundError(f"Role {role_id} not found")
 
         try:
-            user_role = UserRole(
-                user_id=user_id,
-                role_id=role_id,
-                assigned_by=assigned_by,
-                expires_at=expires_at
-            )
-            self.db.add(user_role)
+            if name is not None:
+                role.name = name
+            if permissions is not None:
+                role.permissions = permissions
+            role.updated_at = datetime.now(timezone.utc)
             self.db.commit()
-            return user_role
+            return role
         except IntegrityError:
             self.db.rollback()
-            raise DuplicateResourceError(f"User already has role '{role.name}'")
+            raise DuplicateResourceError(f"Role '{name}' already exists")
 
-    def remove_role_from_user(self, user_id: str, role_id: str) -> None:
-        """
-        Remove a role from a user.
+    def delete_role(self, role_id: UUID) -> None:
+        """Delete role.
         
         Args:
-            user_id: ID of the user to remove the role from
-            role_id: ID of the role to remove
+            role_id: Role ID
+            
+        Raises:
+            ResourceNotFoundError: If role not found
         """
-        self.db.query(UserRole).filter(
-            UserRole.user_id == user_id,
-            UserRole.role_id == role_id
-        ).delete()
+        role = self.get_role(role_id)
+        if not role:
+            raise ResourceNotFoundError(f"Role {role_id} not found")
+
+        self.db.delete(role)
         self.db.commit()
 
-    def get_user_roles(self, user_id: str) -> List[Role]:
-        """
-        Get all active (non-expired) roles for a user.
+    def has_permission(self, role_name: str, permission: str) -> bool:
+        """Check if role has permission.
         
         Args:
-            user_id: ID of the user to get roles for
+            role_name: Role name
+            permission: Permission to check
             
         Returns:
-            List[Role]: List of active roles for the user
+            bool: True if role has permission, False otherwise
         """
-        now = datetime.utcnow()
-        user_roles = self.db.query(UserRole).filter(
-            UserRole.user_id == user_id,
-            (UserRole.expires_at.is_(None) | (UserRole.expires_at > now))
-        ).all()
-        return [ur.role for ur in user_roles]
+        role = self.get_role_by_name(role_name)
+        if not role:
+            return False
+        return permission in role.permissions
 
-    def check_permission(self, user_id: str, permission: Permission) -> bool:
-        """
-        Check if a user has a specific permission through any of their roles.
+    def has_any_permission(self, role_name: str, permissions: List[str]) -> bool:
+        """Check if role has any of the permissions.
         
         Args:
-            user_id: ID of the user to check permissions for
-            permission: Permission to check for
+            role_name: Role name
+            permissions: List of permissions to check
             
         Returns:
-            bool: True if the user has the permission, False otherwise
+            bool: True if role has any permission, False otherwise
         """
-        roles = self.get_user_roles(user_id)
-        return any(role.has_permission(permission) for role in roles)
+        role = self.get_role_by_name(role_name)
+        if not role:
+            return False
+        return any(p in role.permissions for p in permissions)
 
-    def initialize_default_roles(self) -> None:
+    def has_all_permissions(self, role_name: str, permissions: List[str]) -> bool:
+        """Check if role has all permissions.
+        
+        Args:
+            role_name: Role name
+            permissions: List of permissions to check
+            
+        Returns:
+            bool: True if role has all permissions, False otherwise
         """
-        Initialize the default roles in the system if they don't exist.
-        Should be called during application startup.
-        """
-        for role_name, role_data in DefaultRoles.get_all_roles().items():
-            if not self.get_role_by_name(role_name):
-                self.create_role(
-                    name=role_name,
-                    permissions=role_data["permissions"],
-                    description=f"Default {role_name} role"
-                )
+        role = self.get_role_by_name(role_name)
+        if not role:
+            return False
+        return all(p in role.permissions for p in permissions)

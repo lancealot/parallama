@@ -4,8 +4,8 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 
-from parallama.models import Base
-from parallama.db.session import DatabaseSettings
+from parallama.models import *  # This imports all models
+from parallama.core.database import SQLALCHEMY_DATABASE_URL, Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -19,15 +19,8 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_url():
-    """Get database URL from settings."""
-    settings = DatabaseSettings(
-        host=context.get_x_argument(as_dictionary=True).get('db_host', 'localhost'),
-        port=int(context.get_x_argument(as_dictionary=True).get('db_port', '5432')),
-        username=context.get_x_argument(as_dictionary=True).get('db_user', 'parallama'),
-        password=context.get_x_argument(as_dictionary=True).get('db_pass', 'parallama'),
-        database=context.get_x_argument(as_dictionary=True).get('db_name', 'parallama')
-    )
-    return settings.database_url
+    """Get database URL."""
+    return SQLALCHEMY_DATABASE_URL
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

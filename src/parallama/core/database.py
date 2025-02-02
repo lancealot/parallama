@@ -2,46 +2,28 @@
 
 from contextlib import contextmanager
 from typing import Generator
-
+import redis
 from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-from .config import config
+# Database configuration
+SQLALCHEMY_DATABASE_URL = "postgresql://parallama:development@localhost:5432/parallama"
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create database engine with connection pooling
-engine = create_engine(
-    config.database.url,
-    pool_size=config.database.pool_size,
-    max_overflow=config.database.max_overflow,
-    pool_timeout=config.database.pool_timeout,
-    pool_recycle=config.database.pool_recycle,
-    pool_pre_ping=True,  # Enable connection health checks
-    echo=config.database.echo_sql  # SQL query logging
-)
+# Redis configuration
+REDIS_URL = "redis://localhost:6379/0"
+redis_client = redis.from_url(REDIS_URL)
 
-# Create session factory
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+# Base class for SQLAlchemy models
+Base = declarative_base()
 
 def get_db() -> Generator[Session, None, None]:
-    """
-    Get a database session from the connection pool.
+    """Get database session.
     
     Yields:
         Session: Database session
-        
-    Example:
-        ```python
-        db = next(get_db())
-        try:
-            # Use the session
-            users = db.query(User).all()
-        finally:
-            db.close()
-        ```
     """
     db = SessionLocal()
     try:
@@ -49,40 +31,80 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
-@contextmanager
-def get_db_context() -> Generator[Session, None, None]:
+def get_redis() -> Generator[redis.Redis, None, None]:
+    """Get Redis client.
+    
+    Yields:
+        redis.Redis: Redis client
     """
-    Context manager for database sessions.
+    try:
+        yield redis_client
+    finally:
+        redis_client.close()
+
+@contextmanager
+def db_transaction() -> Generator[Session, None, None]:
+    """Context manager for database transactions.
     
     Yields:
         Session: Database session
         
     Example:
-        ```python
-        with get_db_context() as db:
-            # Use the session
-            users = db.query(User).all()
-        # Session is automatically closed
-        ```
+        with db_transaction() as db:
+            db.add(some_model)
+            db.commit()
     """
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 def init_db() -> None:
-    """
-    Initialize the database.
-    Creates all tables and sets up initial data.
-    """
-    from ..models.base import Base
-    
-    # Create all tables
+    """Initialize database schema."""
     Base.metadata.create_all(bind=engine)
+
+def drop_db() -> None:
+    """Drop all database tables."""
+    Base.metadata.drop_all(bind=engine)
+
+def reset_db() -> None:
+    """Reset database by dropping and recreating all tables."""
+    drop_db()
+    init_db()
+
+def get_engine():
+    """Get SQLAlchemy engine.
     
-    # Initialize default roles
-    with get_db_context() as db:
-        from ..services.role import RoleService
-        role_service = RoleService(db)
-        role_service.initialize_default_roles()
+    Returns:
+        Engine: SQLAlchemy engine
+    """
+    return engine
+
+def get_base():
+    """Get SQLAlchemy base class.
+    
+    Returns:
+        DeclarativeMeta: SQLAlchemy base class
+    """
+    return Base
+
+def get_session_class():
+    """Get SQLAlchemy session class.
+    
+    Returns:
+        sessionmaker: SQLAlchemy session class
+    """
+    return SessionLocal
+
+def get_redis_client():
+    """Get Redis client.
+    
+    Returns:
+        redis.Redis: Redis client
+    """
+    return redis_client

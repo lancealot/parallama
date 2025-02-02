@@ -4,11 +4,13 @@ from datetime import datetime
 from typing import Callable, Optional
 from uuid import UUID
 
+import redis
+
 from fastapi import Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp
-from starlette.datastructures import State
+from starlette.datastructures import State, MutableHeaders
 
 from ..core.database import get_db
 from ..services.rate_limit import RateLimitService
@@ -50,9 +52,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         Raises:
             HTTPException: If rate limit is exceeded
         """
-        # Initialize request state if not present
-        if not hasattr(request, "state"):
-            request.state = State()
+        # Initialize request state
+        request.state.start_time = datetime.utcnow().timestamp()
+        request.state.tokens_used = None
+        request.state.model_name = None
+        request.state.error_message = None
+        request.state.status_code = None
+        request.state.gateway_type = None
 
         # Skip rate limiting for non-API routes
         if not request.url.path.startswith(("/ollama/", "/openai/")):
@@ -63,8 +69,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         gateway_type = self.get_gateway_type(request)
-        start_time = getattr(request.state, "start_time", datetime.utcnow().timestamp())
-        request.state.start_time = start_time
+        request.state.gateway_type = gateway_type
 
         # Initialize rate limit service
         db = next(get_db())
@@ -72,26 +77,36 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         try:
             # Check rate limits before processing
-            tokens = getattr(request.state, "tokens_used", None)
-            print(f"\nMiddleware Rate Limit Check:")
-            print(f"User ID: {user_id}")
-            print(f"Gateway Type: {gateway_type}")
-            print(f"Tokens: {tokens}")
-            print(f"Path: {request.url.path}")
-            print(f"State attributes: {dir(request.state)}")
             try:
                 await rate_limit_service.check_rate_limit(
                     user_id=user_id,
                     gateway_type=gateway_type,
-                    tokens=tokens
+                    tokens=request.state.tokens_used
                 )
-            except HTTPException as e:
-                # Record the rate limit exceeded event
+            except redis.ConnectionError:
+                error_message = "Rate limiting service unavailable"
                 await rate_limit_service.record_usage(
                     user_id=user_id,
                     gateway_type=gateway_type,
                     endpoint=request.url.path,
-                    tokens=tokens,
+                    tokens=request.state.tokens_used,
+                    model_name=request.state.model_name,
+                    duration=0,
+                    status_code=503,
+                    error_message=error_message
+                )
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": error_message}
+                )
+            except HTTPException as e:
+                await rate_limit_service.record_usage(
+                    user_id=user_id,
+                    gateway_type=gateway_type,
+                    endpoint=request.url.path,
+                    tokens=request.state.tokens_used,
+                    model_name=request.state.model_name,
+                    duration=0,
                     status_code=e.status_code,
                     error_message=str(e.detail)
                 )
@@ -100,46 +115,46 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     content={"detail": e.detail}
                 )
 
+            # Process the request
             try:
-                # Process the request
                 response = await call_next(request)
-
-                # Record usage after processing
-                end_time = getattr(request.state, "end_time", datetime.utcnow().timestamp())
-                request.state.end_time = end_time
-                duration = int((end_time - start_time) * 1000)  # Convert to milliseconds
-
-                error_message = getattr(request.state, "error_message", None)
-                status_code = response.status_code
-                print(f"\nMiddleware Recording Usage:")
-                print(f"Tokens: {tokens}")
-                print(f"Status Code: {status_code}")
-                print(f"Duration: {duration}ms")
+                request.state.end_time = datetime.utcnow().timestamp()
+                duration = int((request.state.end_time - request.state.start_time) * 1000)
 
                 # If there's an error message, override the response
-                if error_message:
-                    status_code = getattr(request.state, "status_code", 500)
-                    response = JSONResponse(
+                if request.state.error_message:
+                    status_code = request.state.status_code or 500
+                    await rate_limit_service.record_usage(
+                        user_id=user_id,
+                        gateway_type=gateway_type,
+                        endpoint=request.url.path,
+                        tokens=request.state.tokens_used,
+                        model_name=request.state.model_name,
+                        duration=duration,
                         status_code=status_code,
-                        content={"detail": error_message}
+                        error_message=request.state.error_message
+                    )
+                    return JSONResponse(
+                        status_code=status_code,
+                        content={"detail": request.state.error_message}
                     )
 
-                # Record usage
+                # Record successful usage
                 await rate_limit_service.record_usage(
                     user_id=user_id,
                     gateway_type=gateway_type,
                     endpoint=request.url.path,
-                    tokens=tokens,
-                    model_name=getattr(request.state, "model_name", None),
+                    tokens=request.state.tokens_used,
+                    model_name=request.state.model_name,
                     duration=duration,
-                    status_code=status_code,
-                    error_message=error_message
+                    status_code=response.status_code,
+                    error_message=request.state.error_message
                 )
 
                 return response
 
             except Exception as e:
-                # Record error and re-raise
+                # Record error
                 error_message = str(e)
                 status_code = 500
                 if isinstance(e, HTTPException):
@@ -150,29 +165,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     user_id=user_id,
                     gateway_type=gateway_type,
                     endpoint=request.url.path,
+                    tokens=request.state.tokens_used,
+                    model_name=request.state.model_name,
+                    duration=int((datetime.utcnow().timestamp() - request.state.start_time) * 1000),
                     status_code=status_code,
                     error_message=error_message
                 )
 
-                # Re-raise as HTTPException if it's not already one
-                if not isinstance(e, HTTPException):
-                    raise HTTPException(
-                        status_code=status_code,
-                        detail=error_message
-                    ) from e
-                raise
-
-        except Exception as e:
-            # Handle any uncaught exceptions
-            if isinstance(e, HTTPException):
                 return JSONResponse(
-                    status_code=e.status_code,
-                    content={"detail": str(e.detail)}
+                    status_code=status_code,
+                    content={"detail": error_message}
                 )
-            return JSONResponse(
-                status_code=500,
-                content={"detail": str(e)}
-            )
 
         finally:
             try:
@@ -180,6 +183,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             except:
                 pass
             db.close()
+
+            # Clean up request state
+            for attr in [
+                'start_time', 'end_time', 'tokens_used',
+                'model_name', 'error_message', 'status_code',
+                'gateway_type'
+            ]:
+                if hasattr(request.state, attr):
+                    delattr(request.state, attr)
 
     @staticmethod
     def get_gateway_type_from_path(request: Request) -> str:
@@ -196,3 +208,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         elif request.url.path.startswith("/openai/"):
             return "openai"
         return "unknown"
+
+    async def cleanup(self):
+        """Cleanup resources when the application shuts down."""
+        try:
+            db = next(get_db())
+            rate_limit_service = RateLimitService(db)
+            await rate_limit_service.cleanup()
+            rate_limit_service.close()
+            db.close()
+        except:
+            pass

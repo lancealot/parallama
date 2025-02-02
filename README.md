@@ -58,6 +58,8 @@ Parallama is a multi-user authentication and access management service for Ollam
 - PostgreSQL 13+
 - Redis 5+
 - Ollama
+- podman
+- podman-compose
 
 ## Quick Start
 
@@ -162,7 +164,7 @@ pip install -e ".[dev]"
 
 4. Start development services:
 ```bash
-docker-compose up -d  # Starts PostgreSQL and Redis
+podman-compose up -d  # Starts PostgreSQL and Redis
 ```
 
 5. Initialize the database:

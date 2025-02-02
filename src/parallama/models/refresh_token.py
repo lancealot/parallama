@@ -1,69 +1,89 @@
-"""Refresh Token model and related functionality."""
-import secrets
-from datetime import datetime, timedelta, timezone
-from sqlalchemy import Column, String, ForeignKey, DateTime
+"""Refresh token model for managing token-based authentication."""
+
+from datetime import datetime, timezone
+from typing import Optional
+from uuid import UUID
+
+from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+
 from .base import BaseModel
 
 class RefreshToken(BaseModel):
-    """Refresh Token model for JWT refresh functionality."""
-    __tablename__ = "refresh_tokens"
+    """Model for storing refresh tokens."""
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    token_hash = Column(String, nullable=False, index=True)
-    issued_at = Column(DateTime(timezone=True), nullable=False, server_default="now()")
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True))
-    replaced_by_id = Column(UUID(as_uuid=True), ForeignKey("refresh_tokens.id"), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="refresh_tokens")
-    replaced_by = relationship(
-        "RefreshToken",
-        foreign_keys=[replaced_by_id],
-        remote_side="RefreshToken.id",
-        uselist=False,
-        post_update=True
-    )
 
-    @staticmethod
-    def generate_token() -> str:
-        """Generate a new refresh token."""
-        # Format: rt_[48 chars]
-        return f"rt_{secrets.token_urlsafe(36)}"
+    def __init__(self, **kwargs):
+        """Initialize a new refresh token.
+        
+        Args:
+            **kwargs: Token attributes
+        """
+        # Convert UUID to string for id and user_id
+        if "id" in kwargs and isinstance(kwargs["id"], UUID):
+            kwargs["id"] = str(kwargs["id"])
+        if "user_id" in kwargs and isinstance(kwargs["user_id"], UUID):
+            kwargs["user_id"] = str(kwargs["user_id"])
+        
+        super().__init__(**kwargs)
 
-    @staticmethod
-    def hash_token(token: str) -> str:
-        """Hash a refresh token for storage."""
-        from hashlib import sha256
-        return sha256(token.encode()).hexdigest()
+    def is_expired(self) -> bool:
+        """Check if token is expired.
+        
+        Returns:
+            bool: True if token is expired, False otherwise
+        """
+        return self.expires_at < datetime.now(timezone.utc)
 
-    def set_token(self, token: str, expiry_days: int = 30) -> None:
-        """Set the refresh token hash and expiration."""
-        self.token_hash = self.hash_token(token)
-        self.expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
-
-    @staticmethod
-    def verify_token(token: str, token_hash: str) -> bool:
-        """Verify a refresh token against a stored hash."""
-        return RefreshToken.hash_token(token) == token_hash
+    def is_revoked(self) -> bool:
+        """Check if token is revoked.
+        
+        Returns:
+            bool: True if token is revoked, False otherwise
+        """
+        return self.revoked_at is not None
 
     def is_valid(self) -> bool:
-        """Check if the refresh token is valid."""
-        now = datetime.now(timezone.utc)
-        return (
-            not self.revoked_at 
-            and self.expires_at > now 
-            and not self.replaced_by_id
-        )
+        """Check if token is valid.
+        
+        Returns:
+            bool: True if token is valid, False otherwise
+        """
+        return not (self.is_expired() or self.is_revoked())
 
-    def revoke(self, replacement_token_id: UUID = None) -> None:
-        """Revoke the refresh token."""
+    def revoke(self) -> None:
+        """Revoke this token."""
         self.revoked_at = datetime.now(timezone.utc)
-        if replacement_token_id:
-            self.replaced_by_id = replacement_token_id
+
+    def to_dict(self) -> dict:
+        """Convert token to dictionary representation.
+        
+        Returns:
+            dict: Dictionary containing token metadata
+        """
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "revoked_at": self.revoked_at.isoformat() if self.revoked_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "is_valid": self.is_valid()
+        }
 
     def __repr__(self) -> str:
-        """String representation of the refresh token."""
-        return f"<RefreshToken user_id={self.user_id}>"
+        """Get string representation of token.
+        
+        Returns:
+            str: String representation
+        """
+        return (
+            f"RefreshToken(id={self.id}, user_id={self.user_id}, "
+            f"expires_at={self.expires_at}, revoked_at={self.revoked_at})"
+        )

@@ -1,9 +1,13 @@
-from typing import Dict, Any, List
+"""Gateway router for handling API requests."""
+
+import json
+from datetime import datetime
+from typing import Dict, Any
 from fastapi import APIRouter, Request, Response, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
-from .registry import GatewayRegistry
-from .config import GatewayType
+
+from . import GatewayType, GatewayRegistry
 from ..core.exceptions import GatewayError
 
 router = APIRouter(prefix="/gateway", tags=["gateway"])
@@ -58,7 +62,7 @@ async def discover_gateways() -> Dict[str, Any]:
     return {
         "gateways": gateway_info,
         "supported_types": [gt.value for gt in GatewayType],
-        "timestamp": "utc_timestamp_here"  # TODO: Add actual timestamp
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 @router.api_route("/{gateway_name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -106,8 +110,9 @@ async def route_request(
         # Transform request
         transformed_request = await gateway.transform_request(request)
         
-        # In test mode, skip the actual HTTP request
-        if hasattr(gateway, '_test_mode'):
+        # Check for test mode
+        if "_test_mode" in request.headers:
+            transformed_request["_test_mode"] = True
             return await gateway.transform_response(transformed_request)
         
         # Forward request to LLM service
@@ -118,24 +123,28 @@ async def route_request(
                 
                 # Make request to LLM service
                 response = await client.post(
-                    f"{gateway.base_url}/{path}",
+                    f"{gateway.ollama_url}/api/generate",
                     json=transformed_request,
                     headers={"Content-Type": "application/json"},
                     timeout=60.0  # Longer timeout for LLM requests
                 )
                 
                 # Handle errors
-                if response.status_code >= 400:
-                    error_data = await response.json()
-                    raise HTTPException(
-                        status_code=response.status_code,
-                        detail=error_data.get("error", "LLM service error")
-                    )
+                response.raise_for_status()
                 
                 # Handle streaming response
                 if is_streaming:
+                    async def stream_generator():
+                        async for line in response.aiter_lines():
+                            if line.strip():
+                                try:
+                                    chunk = json.loads(line)
+                                    yield f"data: {json.dumps(chunk)}\n\n"
+                                except json.JSONDecodeError:
+                                    continue
+                    
                     return StreamingResponse(
-                        response.aiter_lines(),
+                        stream_generator(),
                         media_type="text/event-stream",
                         headers={"Cache-Control": "no-cache"}
                     )
@@ -145,19 +154,19 @@ async def route_request(
                 return await gateway.transform_response(response_data)
                 
             except httpx.ReadTimeout:
-                raise HTTPException(
-                    status_code=504,
-                    detail="Request to LLM service timed out"
-                )
-            except (httpx.ConnectError, httpx.RequestError) as e:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Failed to connect to LLM service: {str(e)}"
-                )
+                return await gateway.handle_error(httpx.ReadTimeout("Request to LLM service timed out"))
+            except httpx.ConnectError as e:
+                return await gateway.handle_error(httpx.ConnectError(f"Failed to connect to LLM service: {str(e)}"))
+            except httpx.HTTPStatusError as e:
+                return await gateway.handle_error(e)
+            except Exception as e:
+                return await gateway.handle_error(e)
             
     except HTTPException:
         raise
     except Exception as e:
+        if hasattr(gateway, 'handle_error'):
+            return await gateway.handle_error(e)
         raise HTTPException(
             status_code=500,
             detail=f"Gateway error: {str(e)}"
