@@ -1,168 +1,149 @@
-# Next Development Session: Rate Limiting and OpenAI Gateway
+# Next Development Session: OpenAI Gateway Enhancements
 
 ## Completed Items
 
 1. Database Compatibility ✓
-- Updated models to use String UUIDs for SQLite support
-- Fixed session handling in tests
-- Added comprehensive test coverage for database operations
-
 2. Gateway Architecture Setup ✓
-- Created base LLMGateway interface with:
-  * Authentication validation
-  * Request/response transformation
-  * Status monitoring
-  * Error handling
-- Implemented GatewayRegistry with:
-  * Singleton pattern for instances
-  * Dynamic gateway registration
-  * Gateway discovery support
-- Added configuration system:
-  * Rate limiting configuration
-  * Model mapping support
-  * Gateway-specific settings
-  * Validation rules
-- Created request router:
-  * Path-based routing
-  * Authentication middleware
-  * Error handling
-  * Discovery endpoint
-- Added comprehensive test coverage:
-  * Configuration validation tests
-  * Gateway registration tests
-  * Authentication tests
-  * Error handling tests
-  * Request/response tests
-
 3. Ollama Gateway Implementation ✓
-- Created OllamaGateway class
-- Implemented model discovery
-- Added request/response transformation
-- Set up authentication integration
-- Added streaming support
-- Added comprehensive test coverage:
-  * Unit tests for gateway functionality
-  * Integration tests for API endpoints
-  * Error handling tests
-  * Streaming response tests
-
 4. Rate Limiting Implementation ✓
-- Added Redis-based rate limiting service
-- Implemented token counting and request tracking
-- Added per-model and per-user rate limits
-- Set up usage tracking and logging
-- Created database models and migrations
-- Added FastAPI middleware for request handling
-- Added comprehensive test coverage:
-  * Unit tests for rate limiting service
-  * Integration tests for middleware
-  * Redis integration tests
-  * Error handling and logging tests
-- Implemented Redis mock for testing
-- Added token accumulation tracking
-- Added wildcard gateway support
-- Added per-gateway and shared limits
-- Fixed rate limit checking order:
-  * Check limits before processing request
-  * Improved error handling and logging
-  * Added request timing tracking
-  * Enhanced Redis connection error handling
-
 5. CLI Tool Enhancements ✓
-- Added rate limit management commands:
-  * Set rate limits for users and gateways
-  * View current rate limits
-  * Reset rate limits to defaults
-- Added usage reporting commands:
-  * List usage history with filtering
-  * Generate usage summaries
-  * Export data in JSON/CSV formats
-- Added comprehensive test coverage:
-  * Command validation tests
-  * Data export verification
-  * Error handling tests
+6. Basic OpenAI Gateway Implementation ✓
+   - Created OpenAIGateway class
+   - Implemented model mapping
+   - Added request format conversion
+   - Set up response transformation
+   - Added streaming support
+   - Added basic test coverage:
+     * Gateway initialization tests
+     * Request transformation tests
+     * Response transformation tests
+     * Streaming response tests
+     * Status check tests
 
-## Current Focus: Rate Limit Testing
+## Current Focus: OpenAI Gateway Enhancements
 
-Working on fixing test failures in rate limiting:
-1. test_rate_limit_middleware_exceeded
-2. test_rate_limit_middleware_error_logging
-3. test_rate_limit_middleware_redis_error
-4. test_rate_limit_middleware_request_timing
+1. Token Counting Implementation ✓
+   - [x] Accurate token counting for prompts and responses
+   - [x] Token usage tracking per model
+   - [x] Integration with rate limiting system
+   - [x] Token estimation for streaming responses
+   - [x] Token counting cache with TTL
+   - [x] Model-specific encoders
 
-Issues being addressed:
-- Rate limit check timing
-- Redis mock response format
-- Error handling and logging
-- Request timing tracking
+2. Additional OpenAI API Endpoints (In Progress)
+   - [x] /models endpoint with model details
+   - [x] /embeddings endpoint support (demo implementation)
+   - [x] /edits endpoint support (demo implementation)
+   - [x] /moderations endpoint support (demo implementation)
+   - [ ] Production integrations:
+     * Embeddings endpoint
+     * Edits endpoint (with actual model calls)
+     * Moderations endpoint (with content analysis model)
+   - [ ] Batch request handling
 
-## Next Focus Areas
+3. Error Handling Improvements ✓
+   - [x] Standardized error formats
+   - [x] Rate limit error handling
+   - [x] Model-specific error messages
+   - [x] Validation error improvements
+   - [x] Connection error recovery
+   - [x] Comprehensive error status codes
 
-1. OpenAI Compatibility Gateway
-- Create OpenAIGateway class
-- Implement model mapping
-- Add request format conversion
-- Set up response transformation
-- Add streaming support
+4. Performance Optimizations (Partially Complete)
+   - [x] Connection pooling
+   - [ ] Request batching
+   - [x] Token counting cache
+   - [x] Streaming optimizations
+   - [ ] Memory usage improvements
 
-## Implementation Order
+## Implementation Plan
 
-1. OpenAI Gateway
+1. Token Counting
 ```python
-class OpenAIGateway(LLMGateway):
-    async def transform_request(self, request: Request) -> Dict[str, Any]:
-        # Transform to OpenAI format
+class TokenCounter:
+    async def count_tokens(self, text: str, model: str) -> int:
+        # Implement token counting logic
         pass
-    
-    async def transform_response(self, response: Dict[str, Any]) -> Response:
-        # Transform to OpenAI format
+
+    async def estimate_streaming_tokens(self, stream: AsyncGenerator) -> int:
+        # Implement streaming token estimation
+        pass
+```
+
+2. Additional Endpoints
+```python
+class OpenAIGateway:
+    async def handle_embeddings(self, request: Request) -> Response:
+        # Implement embeddings endpoint
+        pass
+
+    async def handle_edits(self, request: Request) -> Response:
+        # Implement edits endpoint
         pass
 ```
 
 ## Key Considerations
 
-1. OpenAI Compatibility
-- Model mapping
-- Parameter conversion
-- Response format standardization
-- Error handling
+1. API Compatibility
+   - Full OpenAI API spec compliance
+   - Backward compatibility
+   - Feature parity where possible
+   - Graceful fallbacks
 
-2. Testing
-- OpenAI gateway tests
-- Integration tests
-- Performance testing
+2. Performance
+   - Response time optimization
+   - Memory efficiency
+   - Connection management
+   - Error recovery
+
+3. Testing
+   - Token counting accuracy
+   - Endpoint compatibility
+   - Error handling coverage
+   - Performance benchmarks
 
 ## Development Environment
 
 Required packages:
 ```bash
-pip install redis aioredis prometheus-client
+pip install tiktoken httpx pytest-asyncio
 ```
 
 ## Testing Plan
 
-1. OpenAI Gateway Tests
+1. Token Counting Tests
 ```python
-def test_openai_gateway():
-    # Test model mapping
-    # Test format conversion
-    # Test streaming support
+async def test_token_counting():
+    # Test accuracy
+    # Test streaming estimation
+    # Test different models
+    pass
+```
+
+2. New Endpoint Tests
+```python
+async def test_embeddings():
+    # Test request format
+    # Test response format
+    # Test error cases
     pass
 ```
 
 ## Expected Outcomes
 
-1. Working OpenAI Gateway:
-- Compatible API
-- Model mapping
-- Format conversion
-- Streaming support
+1. Enhanced OpenAI Gateway:
+   - Complete API compatibility
+   - Accurate token counting
+   - Robust error handling
+   - Optimized performance
 
 2. Updated Documentation:
-- OpenAI compatibility notes
-- Configuration examples
+   - API endpoint details
+   - Token counting guide
+   - Performance tuning tips
 
 3. Comprehensive Tests:
-- Unit tests
-- Integration tests
-- Performance tests
+   - Unit tests for new features
+   - Integration tests
+   - Performance benchmarks
+   - Error handling coverage

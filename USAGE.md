@@ -278,6 +278,13 @@ Response:
 
 ### OpenAI Compatible API
 
+#### Performance Features
+- Connection pooling with configurable pool size
+- Token counting cache with TTL for improved performance
+- Async request handling for better concurrency
+- Streaming optimizations for real-time responses
+- Configurable timeouts and retry mechanisms
+
 #### List Models
 ```
 GET /openai/v1/models
@@ -292,6 +299,198 @@ Response:
             "owned_by": "parallama"
         }
     ]
+}
+```
+
+#### Create Embeddings
+```
+GET /openai/v1/embeddings
+
+Note: Currently in demonstration mode. Generates pseudo-random embeddings 
+for development and testing purposes.
+
+Request:
+{
+    "model": "text-embedding-ada-002",  // or "llama2"
+    "input": "Your text here"  // or ["text1", "text2", ...] for batch
+}
+
+Response:
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "embedding",
+            "embedding": [0.1, -0.2, ...],  // Vector of size 1536 (ada) or 4096 (llama2)
+            "index": 0
+        }
+    ],
+    "model": "text-embedding-ada-002",
+    "usage": {
+        "prompt_tokens": 5,
+        "total_tokens": 5
+    }
+}
+
+Limitations:
+- Maximum of 100 inputs per request
+- All inputs must be strings
+- Currently generates pseudo-random embeddings
+- Production integration pending
+
+#### Create Edits
+```
+POST /openai/v1/edits
+
+Note: Currently in demonstration mode. Implements basic text transformations
+for development and testing purposes.
+
+Request:
+{
+    "model": "text-davinci-edit-001",
+    "input": "teh cat",  // Optional, defaults to empty string
+    "instruction": "Fix spelling",
+    "n": 1,  // Optional, number of edits to generate (1-20)
+    "temperature": 0.7  // Optional, controls randomness (0-2)
+}
+
+Response:
+{
+    "object": "edit",
+    "created": 1677858242,
+    "choices": [
+        {
+            "text": "the cat",
+            "index": 0
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 5,
+        "completion_tokens": 2,
+        "total_tokens": 7
+    }
+}
+
+Supported Instructions:
+- "Fix spelling": Basic spell check corrections
+- "uppercase": Convert text to uppercase
+- "lowercase": Convert text to lowercase
+- Other instructions: Returns input with instruction as comment
+
+Limitations:
+- Basic text transformations only
+- Production integration pending
+
+#### Create Moderations
+```
+POST /openai/v1/moderations
+
+Note: Currently in demonstration mode. Uses pattern matching for basic
+content moderation.
+
+Request:
+{
+    "input": "Text to analyze"  // or ["text1", "text2", ...] for batch
+}
+
+Response:
+{
+    "id": "modr-123",
+    "model": "text-moderation-latest",
+    "results": [
+        {
+            "flagged": false,
+            "categories": {
+                "hate": false,
+                "hate/threatening": false,
+                "self-harm": false,
+                "sexual": false,
+                "sexual/minors": false,
+                "violence": false,
+                "violence/graphic": false
+            },
+            "category_scores": {
+                "hate": 0.0,
+                "hate/threatening": 0.0,
+                "self-harm": 0.0,
+                "sexual": 0.0,
+                "sexual/minors": 0.0,
+                "violence": 0.0,
+                "violence/graphic": 0.0
+            }
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 5,
+        "total_tokens": 5
+    }
+}
+
+Limitations:
+- Uses simple pattern matching
+- Basic content categories only
+- Production integration pending
+
+Request:
+{
+    "model": "text-embedding-ada-002",  // or "llama2"
+    "input": "Your text here"  // or ["text1", "text2", ...] for batch
+}
+
+Response:
+{
+    "object": "list",
+    "data": [
+        {
+            "object": "embedding",
+            "embedding": [0.1, -0.2, ...],  // Vector of size 1536 (ada) or 4096 (llama2)
+            "index": 0
+        }
+    ],
+    "model": "text-embedding-ada-002",
+    "usage": {
+        "prompt_tokens": 5,
+        "total_tokens": 5
+    }
+}
+
+Limitations:
+- Maximum of 100 inputs per request
+- All inputs must be strings
+- Currently generates pseudo-random embeddings
+- Production integration pending
+```
+
+#### Error Handling
+All API endpoints return standardized error responses:
+
+```
+{
+    "error": {
+        "message": "Detailed error message",
+        "type": "invalid_request_error",
+        "code": "rate_limit_exceeded"
+    }
+}
+```
+
+Status Codes:
+- 400: Invalid request format
+- 401: Authentication error
+- 404: Resource not found
+- 429: Rate limit exceeded
+- 500: Internal server error
+- 502: Gateway error
+- 504: Gateway timeout
+
+Rate Limiting Errors:
+```
+{
+    "error": {
+        "message": "Rate limit exceeded: 1000 tokens/hour",
+        "type": "rate_limit_error",
+        "code": "token_limit_exceeded"
+    }
 }
 ```
 
@@ -608,6 +807,21 @@ api_gateways:
     model_mappings:
       gpt-3.5-turbo: llama2
       gpt-4: llama2:70b
+    token_counter:
+      enabled: true
+      cache_size: 1000
+      cache_ttl: 3600
+    performance:
+      connection_pool_size: 100
+      request_timeout: 60
+      max_retries: 3
+      batch_size: 10
+    endpoints:
+      chat: true
+      completions: true
+      embeddings: false
+      edits: false
+      moderations: false
 ```
 
 ### Rate Limiting

@@ -39,12 +39,34 @@
   - [x] Model mapping configuration
   - [x] Response transformation
   - [x] Usage tracking
-- [ ] OpenAI Compatibility Gateway
-  - [ ] Basic gateway functionality
-  - [ ] Model mapping
-  - [ ] Request format conversion
-  - [ ] Response transformation
-  - [ ] Streaming support
+- [-] OpenAI Compatibility Gateway
+  - [x] Basic gateway functionality
+  - [x] Model mapping
+  - [x] Request format conversion
+  - [x] Response transformation
+  - [x] Streaming support
+  - [x] Token counting implementation
+    * Accurate token counting with tiktoken
+    * Token usage tracking per model
+    * Streaming token estimation
+    * Token counting cache with TTL
+  - [-] Additional API endpoints
+    * [x] /models endpoint
+    * [x] /embeddings endpoint (demo)
+    * [ ] Production embeddings integration
+    * [ ] /edits endpoint
+    * [ ] /moderations endpoint
+  - [-] Performance optimizations
+    * [x] Connection pooling
+    * [x] Token counting cache
+    * [x] Streaming optimizations
+    * [ ] Request batching
+    * [ ] Memory optimizations
+  - [x] Enhanced error handling
+    * [x] Standardized error formats
+    * [x] Rate limit error handling
+    * [x] Model-specific errors
+    * [x] Connection error recovery
 
 ## Phase 2.6: API Integration ✓
 - [x] Rate limiting implementation
@@ -215,6 +237,28 @@ CREATE TABLE model_mappings (
   - Base gateway interface
   - Protocol-specific transformers
   - Response formatters
+  
+#### OpenAI Gateway Components
+- Token Counter Service
+  - Model-specific token counting
+  - Streaming token estimation
+  - Usage tracking integration
+- API Endpoint Handlers
+  - Chat completions
+  - Text completions
+  - Embeddings
+  - Edits
+  - Moderations
+- Performance Optimizers
+  - Connection pooling
+  - Request batching
+  - Response caching
+  - Memory management
+- Error Handlers
+  - Standard error formats
+  - Rate limit errors
+  - Model-specific errors
+  - Connection errors
 
 #### Integration Services
 - Ollama Integration Service
@@ -281,6 +325,21 @@ api_gateways:
     model_mappings:
       gpt-3.5-turbo: llama2
       gpt-4: llama2:70b
+    token_counter:
+      enabled: true
+      cache_size: 1000
+      cache_ttl: 3600
+    performance:
+      connection_pool_size: 100
+      request_timeout: 60
+      max_retries: 3
+      batch_size: 10
+    endpoints:
+      chat: true
+      completions: true
+      embeddings: false
+      edits: false
+      moderations: false
 
 logging:
   level: INFO

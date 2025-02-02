@@ -47,6 +47,30 @@ class OllamaConfig(GatewayConfig):
     ollama_url: str = "http://localhost:11434"
     model_mappings: Dict[str, str] = {}
 
+class TokenCounterConfig(BaseModel):
+    """Token counter configuration."""
+
+    enabled: bool = True
+    cache_size: int = Field(1000, ge=0)
+    cache_ttl: int = Field(3600, ge=0)  # in seconds
+
+class PerformanceConfig(BaseModel):
+    """Performance configuration."""
+
+    connection_pool_size: int = Field(100, ge=1)
+    request_timeout: int = Field(60, ge=1)  # in seconds
+    max_retries: int = Field(3, ge=0)
+    batch_size: int = Field(10, ge=1)
+
+class EndpointConfig(BaseModel):
+    """Endpoint configuration."""
+
+    chat: bool = True
+    completions: bool = True
+    embeddings: bool = False
+    edits: bool = False
+    moderations: bool = False
+
 class OpenAIConfig(GatewayConfig):
     """OpenAI gateway configuration."""
 
@@ -55,11 +79,17 @@ class OpenAIConfig(GatewayConfig):
         "gpt-3.5-turbo": "llama2",
         "gpt-4": "llama2:70b"
     }
+    token_counter: TokenCounterConfig = TokenCounterConfig()
+    performance: PerformanceConfig = PerformanceConfig()
+    endpoints: EndpointConfig = EndpointConfig()
 
 __all__ = [
     'GatewayType',
     'RateLimitConfig',
     'GatewayConfig',
     'OllamaConfig',
-    'OpenAIConfig'
+    'OpenAIConfig',
+    'TokenCounterConfig',
+    'PerformanceConfig',
+    'EndpointConfig'
 ]

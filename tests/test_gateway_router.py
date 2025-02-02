@@ -182,6 +182,85 @@ def test_path_parameters(client, setup_gateways):
     )
     assert response.status_code == 200
 
+def test_embeddings_endpoint(client, setup_gateways):
+    """Test embeddings endpoint routing."""
+    response = client.post(
+        "/gateway/working/embeddings",
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json",
+            "_test_mode": "true"
+        },
+        json={
+            "input": "test text",
+            "model": "text-embedding-ada-002"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["object"] == "list"
+    assert len(data["data"]) == 1
+    assert len(data["data"][0]["embedding"]) == 1536
+
+def test_edits_endpoint(client, setup_gateways):
+    """Test edits endpoint routing."""
+    response = client.post(
+        "/gateway/working/edits",
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json",
+            "_test_mode": "true"
+        },
+        json={
+            "input": "teh cat",
+            "instruction": "Fix spelling",
+            "model": "text-davinci-edit-001"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["object"] == "edit"
+    assert len(data["choices"]) == 1
+    assert "text" in data["choices"][0]
+
+def test_moderations_endpoint(client, setup_gateways):
+    """Test moderations endpoint routing."""
+    response = client.post(
+        "/gateway/working/moderations",
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json",
+            "_test_mode": "true"
+        },
+        json={
+            "input": "test text",
+            "model": "text-moderation-latest"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["model"] == "text-moderation-latest"
+    assert len(data["results"]) == 1
+    assert "flagged" in data["results"][0]
+    assert "categories" in data["results"][0]
+    assert "category_scores" in data["results"][0]
+
+def test_endpoint_disabled(client, setup_gateways):
+    """Test behavior when endpoint is disabled."""
+    gateway = GatewayRegistry._instances["working"]
+    gateway.config.endpoints.embeddings = False
+    
+    response = client.post(
+        "/gateway/working/embeddings",
+        headers={
+            "Authorization": "valid-token",
+            "Content-Type": "application/json"
+        },
+        json={"input": "test"}
+    )
+    assert response.status_code == 404
+    assert "not enabled" in response.json()["detail"].lower()
+
 def test_streaming_response(client, setup_gateways):
     """Test handling of streaming responses."""
     gateway = GatewayRegistry._instances["working"]

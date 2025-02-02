@@ -1,12 +1,14 @@
 """OpenAI-compatible gateway implementation."""
 
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncGenerator
 import httpx
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .config import OpenAIConfig
+from ..services.token_counter import TokenCounter
+from .endpoints import EmbeddingsHandler, EditsHandler, ModerationsHandler
 
 class OpenAIGateway:
     """Gateway providing OpenAI-compatible API."""
@@ -20,7 +22,19 @@ class OpenAIGateway:
         self.config = config
         self.ollama_url = "http://localhost:11434"
         self.model_mappings = config.model_mappings
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.client = httpx.AsyncClient(
+            timeout=config.performance.request_timeout,
+            limits=httpx.Limits(
+                max_connections=config.performance.connection_pool_size,
+                max_keepalive_connections=config.performance.connection_pool_size
+            )
+        )
+        self.token_counter = TokenCounter(config.token_counter)
+        
+        # Initialize endpoint handlers
+        self.embeddings_handler = EmbeddingsHandler(config)
+        self.edits_handler = EditsHandler(config)
+        self.moderations_handler = ModerationsHandler(config)
 
     async def validate_auth(self, credentials: str) -> bool:
         """Validate authentication credentials.
@@ -33,6 +47,34 @@ class OpenAIGateway:
         """
         # In compatibility mode, we don't validate OpenAI tokens
         return True
+
+    async def handle_request(self, request: Request) -> Response:
+        """Handle incoming request.
+        
+        Args:
+            request: The incoming FastAPI request
+            
+        Returns:
+            Response: The API response
+        """
+        # Extract endpoint from path
+        path = request.url.path.lower()
+        
+        # Route to appropriate handler
+        if "/embeddings" in path:
+            return await self.embeddings_handler.handle_request(request)
+        elif "/edits" in path:
+            return await self.edits_handler.handle_request(request)
+        elif "/moderations" in path:
+            return await self.moderations_handler.handle_request(request)
+        else:
+            # Handle chat/completion requests
+            transformed_request = await self.transform_request(request)
+            response = await self.client.post(
+                f"{self.ollama_url}/api/generate",
+                json=transformed_request
+            )
+            return await self.transform_response(response.json(), request)
 
     async def transform_request(self, request: Request) -> Dict[str, Any]:
         """Transform OpenAI request to Ollama format.
@@ -47,8 +89,7 @@ class OpenAIGateway:
         
         # Map model name
         model = data.get("model", "gpt-3.5-turbo")
-        if model in self.model_mappings:
-            model = self.model_mappings[model]
+        mapped_model = self.model_mappings.get(model, model)
         
         # Handle chat completion request
         if "messages" in data:
@@ -74,13 +115,27 @@ class OpenAIGateway:
                 prompt_parts.append(f"User: {last_user_msg}")
             
             prompt = "\n".join(prompt_parts)
+            
+            # Count tokens if enabled
+            if self.config.token_counter.enabled:
+                request.state.prompt_tokens = await self.token_counter.count_tokens(
+                    messages,
+                    model
+                )
         else:
             # Regular completion request
             prompt = data.get("prompt", "")
+            
+            # Count tokens if enabled
+            if self.config.token_counter.enabled:
+                request.state.prompt_tokens = await self.token_counter.count_tokens(
+                    prompt,
+                    model
+                )
         
         # Transform request
         transformed = {
-            "model": model,
+            "model": mapped_model,
             "prompt": prompt,
             "stream": data.get("stream", False),
             "temperature": data.get("temperature", 0.7),
@@ -93,11 +148,12 @@ class OpenAIGateway:
         
         return transformed
 
-    async def transform_response(self, response: Dict[str, Any]) -> Response:
+    async def transform_response(self, response: Dict[str, Any], request: Request) -> Response:
         """Transform Ollama response to OpenAI format.
         
         Args:
             response: The raw response from Ollama
+            request: The original request for context
             
         Returns:
             Response: The transformed FastAPI response
@@ -120,7 +176,19 @@ class OpenAIGateway:
         # Handle streaming response
         if response.get("stream"):
             async def stream_generator():
+                completion_tokens = 0
                 async for chunk in response["chunks"]:
+                    # Count tokens in chunk if enabled
+                    if self.config.token_counter.enabled:
+                        content = chunk.get("response", "")
+                        if content:
+                            tokens = await self.token_counter.count_tokens(
+                                content,
+                                request.state.model
+                            )
+                            completion_tokens += tokens
+                            request.state.completion_tokens = completion_tokens
+
                     transformed_chunk = {
                         "id": chunk.get("id", ""),
                         "object": "chat.completion.chunk",
@@ -142,6 +210,15 @@ class OpenAIGateway:
                 headers={"Cache-Control": "no-cache"}
             )
         
+        # Count completion tokens if enabled
+        completion_tokens = 0
+        if self.config.token_counter.enabled:
+            completion_tokens = await self.token_counter.count_tokens(
+                response.get("response", ""),
+                request.state.model
+            )
+            request.state.completion_tokens = completion_tokens
+        
         # Transform regular response
         transformed = {
             "id": f"cmpl-{response.get('id', '')}",
@@ -157,9 +234,11 @@ class OpenAIGateway:
                 "finish_reason": "stop"
             }],
             "usage": {
-                "prompt_tokens": response.get("prompt_tokens", 0),
-                "completion_tokens": response.get("completion_tokens", 0),
-                "total_tokens": response.get("total_tokens", 0)
+                "prompt_tokens": getattr(request.state, "prompt_tokens", 0),
+                "completion_tokens": completion_tokens,
+                "total_tokens": (
+                    getattr(request.state, "prompt_tokens", 0) + completion_tokens
+                )
             }
         }
         

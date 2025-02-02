@@ -9,7 +9,14 @@ Parallama is a multi-user authentication and access management service for Ollam
 ### API Gateway Support
 - Multiple API compatibility modes:
   - Native Ollama API (/ollama/v1)
-  - OpenAI-compatible API (/openai/v1) (Coming Soon)
+  - OpenAI-compatible API (/openai/v1)
+    * Chat and completion endpoints
+    * Token counting with cache
+    * Demo endpoints implemented:
+      - Embeddings (vector generation)
+      - Edits (text transformations)
+      - Moderations (content analysis)
+    * Production integrations in development
   - Extensible framework for future API types
 - API discovery and status monitoring
 - Per-gateway rate limiting and usage tracking
@@ -124,9 +131,18 @@ parallama-cli usage export myuser json|csv [--output file.json] [--gateway ollam
 curl http://localhost:8000/ollama/v1/models \
   -H "Authorization: Bearer your-api-key"
 
-# Using OpenAI compatibility mode (Coming Soon)
+# Using OpenAI compatibility mode
 curl http://localhost:8000/openai/v1/models \
   -H "Authorization: Bearer your-api-key"
+
+# Using OpenAI chat completion
+curl http://localhost:8000/openai/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
 ```
 
 ## Installation
@@ -218,8 +234,39 @@ See [STRUCTURE.md](STRUCTURE.md) for complete documentation of the project struc
 - Comprehensive Test Coverage
 
 #### In Progress
-- OpenAI Compatibility Gateway
-- Usage Analytics Dashboard
-- Deployment Documentation
+1. OpenAI Gateway Enhancements
+   - Core functionality implemented:
+     * Model mapping and discovery
+     * Request/response transformation
+     * Streaming support
+     * Token counting and tracking with cache
+     * Enhanced error handling
+     * Connection pooling
+     * Test coverage
+   - Additional API endpoints:
+     * /models endpoint ✓
+     * /embeddings endpoint (demo implementation) ✓
+     * /edits endpoint (demo implementation) ✓
+     * /moderations endpoint (demo implementation) ✓
+     * Production integrations in progress:
+       - Embeddings with actual model calls
+       - Edits with LLM integration
+       - Moderations with content analysis model
+   - Performance optimizations:
+     * Connection pooling ✓
+     * Token counting cache ✓
+     * Streaming optimizations ✓
+     * Request batching (planned)
+     * Memory optimizations (planned)
+
+2. Usage Analytics Dashboard
+   - Data collection implemented
+   - Dashboard UI in development
+   - Analytics API design
+
+3. Deployment Documentation
+   - Installation guide in progress
+   - Configuration examples
+   - Production deployment best practices
 
 See [NEXT_SESSION.md](NEXT_SESSION.md) for detailed development planning.
