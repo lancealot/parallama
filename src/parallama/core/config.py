@@ -64,6 +64,19 @@ class OllamaConfig(BaseModel):
     default_model: str = Field(default="llama2")
 
 
+class OpenAIPerformanceConfig(BaseModel):
+    """OpenAI gateway performance configuration."""
+    connection_pool_size: int = Field(default=100)
+    request_timeout: int = Field(default=60)
+    max_retries: int = Field(default=3)
+    batch_size: int = Field(default=10)
+
+class TokenCounterConfig(BaseModel):
+    """Token counter configuration."""
+    enabled: bool = Field(default=True)
+    cache_size: int = Field(default=1000)
+    cache_ttl: int = Field(default=3600)
+
 class OpenAIConfig(BaseModel):
     """OpenAI compatibility gateway configuration."""
     base_path: str = Field(default="/openai/v1")
@@ -74,6 +87,8 @@ class OpenAIConfig(BaseModel):
             "gpt-4": "llama2:70b"
         }
     )
+    performance: OpenAIPerformanceConfig = Field(default_factory=OpenAIPerformanceConfig)
+    token_counter: TokenCounterConfig = Field(default_factory=TokenCounterConfig)
 
 
 class LoggingConfig(BaseModel):
@@ -84,7 +99,7 @@ class LoggingConfig(BaseModel):
     backup_count: int = Field(default=10)
 
 
-class Config(BaseModel):
+class Settings(BaseModel):
     """Main application configuration."""
     auth: AuthConfig = Field(default_factory=AuthConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
@@ -95,22 +110,25 @@ class Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
-# Create global config instance
-config = Config()
+# Create global settings instance
+settings = Settings()
 
-def load_config(config_path: Optional[Path] = None) -> None:
+def load_settings(config_path: Optional[Path] = None) -> None:
     """
-    Load configuration from file and environment variables.
+    Load settings from file and environment variables.
     
     Args:
         config_path: Optional path to config file
     """
-    global config
+    global settings
     
     # Load from file if provided
     if config_path and config_path.exists():
-        config = Config.parse_file(config_path)
+        settings = Settings.parse_file(config_path)
     
     # Override with environment variables
     # TODO: Implement environment variable loading
     pass
+
+# Initialize settings
+load_settings()

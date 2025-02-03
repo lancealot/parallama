@@ -89,14 +89,14 @@ class GatewayRegistry:
     _gateway_types: Dict[str, Type[LLMGateway]] = {}
 
     @classmethod
-    def register(cls, gateway_type: str, gateway_class: Type[LLMGateway]) -> None:
-        """Register a gateway implementation.
+    def register(cls, gateway_type: str, gateway: LLMGateway) -> None:
+        """Register a gateway instance.
         
         Args:
             gateway_type: The type identifier for this gateway
-            gateway_class: The gateway class to register
+            gateway: The gateway instance to register
         """
-        cls._gateway_types[gateway_type] = gateway_class
+        cls._instances[gateway_type] = gateway
 
     @classmethod
     def get_gateway(cls, gateway_type: str) -> Optional[LLMGateway]:

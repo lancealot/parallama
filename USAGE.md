@@ -204,23 +204,29 @@ Security features have been thoroughly tested with comprehensive test coverage:
 
 #### List Models
 ```
-GET /ollama/v1/models
+GET /ollama/v1/tags
 
 Response:
 {
     "models": [
         {
-            "name": "llama2",
-            "size": "7B",
-            "modified": "2024-01-29T12:00:00Z",
+            "id": "deepseek-r1:70b-llama-distill-fp16",
+            "object": "model",
+            "owned_by": "ollama",
+            "permission": [],
             "details": {
                 "format": "gguf",
-                "family": "llama"
+                "family": "llama",
+                "families": ["llama"],
+                "parameter_size": "70.6B",
+                "quantization_level": "F16"
             }
         }
     ]
 }
 ```
+
+Note: The /tags endpoint returns a list of all available models with detailed metadata including model family, parameter size, and quantization level.
 
 #### Generate Text
 ```

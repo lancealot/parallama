@@ -10,7 +10,7 @@ import httpx
 from . import GatewayType, GatewayRegistry
 from ..core.exceptions import GatewayError
 
-router = APIRouter(prefix="/gateway", tags=["gateway"])
+router = APIRouter(tags=["gateway"])
 
 async def get_gateway_status(gateway_name: str) -> Dict[str, Any]:
     """Get status information for a specific gateway.
@@ -65,12 +65,13 @@ async def discover_gateways() -> Dict[str, Any]:
         "timestamp": datetime.utcnow().isoformat()
     }
 
-@router.api_route("/{gateway_name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@router.api_route("/{gateway_type}/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def route_request(
-    gateway_name: str,
+    gateway_type: str,
     path: str,
     request: Request
 ) -> Response:
+    print(f"DEBUG: Received request for gateway_type={gateway_type}, path={path}")
     """Route requests to appropriate gateway implementation.
     
     Args:
@@ -84,11 +85,11 @@ async def route_request(
     Raises:
         HTTPException: If gateway is not found or request fails
     """
-    gateway = GatewayRegistry.get_gateway(gateway_name)
+    gateway = GatewayRegistry.get_gateway(gateway_type)
     if not gateway:
         raise HTTPException(
             status_code=404,
-            detail=f"Gateway '{gateway_name}' not found"
+            detail=f"Gateway '{gateway_type}' not found"
         )
     
     try:
@@ -121,13 +122,26 @@ async def route_request(
                 # Check if this is a streaming request
                 is_streaming = transformed_request.get("stream", False)
                 
+                # Determine the method and endpoint
+                method = request.method.lower()
+                endpoint = f"{gateway.ollama_url}/{path}"
+                
+                print(f"DEBUG: Gateway URL base: {gateway.ollama_url}")
+                print(f"DEBUG: Request path: {path}")
+                print(f"DEBUG: Full endpoint URL: {endpoint}")
+                print(f"DEBUG: Making {method.upper()} request")
+                
                 # Make request to LLM service
-                response = await client.post(
-                    f"{gateway.ollama_url}/api/generate",
-                    json=transformed_request,
+                response = await client.request(
+                    method,
+                    endpoint,
+                    json=transformed_request if method in ["post", "put"] else None,
                     headers={"Content-Type": "application/json"},
                     timeout=60.0  # Longer timeout for LLM requests
                 )
+                
+                print(f"DEBUG: Response status: {response.status_code}")
+                print(f"DEBUG: Response content: {response.text}")
                 
                 # Handle errors
                 response.raise_for_status()
@@ -150,8 +164,16 @@ async def route_request(
                     )
                 
                 # Transform non-streaming response
-                response_data = await response.json()
-                return await gateway.transform_response(response_data)
+                try:
+                    # Fix malformed JSON by replacing missing commas
+                    text = response.text.replace('""', '","')
+                    text = text.replace('"}{"', '"},{"')
+                    response_data = json.loads(text)
+                    print(f"DEBUG: Parsed JSON: {json.dumps(response_data, indent=2)}")
+                    return await gateway.transform_response(response_data)
+                except json.JSONDecodeError as e:
+                    print(f"DEBUG: JSON parse error: {str(e)}")
+                    return await gateway.handle_error(e)
                 
             except httpx.ReadTimeout:
                 return await gateway.handle_error(httpx.ReadTimeout("Request to LLM service timed out"))
