@@ -1,3 +1,5 @@
+![alt_text](https://github.com/lancealot/parallama/blob/main/assets/parallama.png?raw=true)
+
 # Parallama
 
 Multi-user authentication and access management service for Ollama.
