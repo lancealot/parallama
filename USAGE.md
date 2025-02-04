@@ -131,16 +131,60 @@ curl -H "Authorization: Bearer YOUR_API_KEY" http://localhost:8000/ollama/v1/cha
 #### Ollama Gateway
 
 - `/ollama/v1/*` - Proxied Ollama API endpoints
-  - `/chat/completions` - Chat completions
+  - `/chat/completions` - Chat completions (streaming supported)
   - `/embeddings` - Text embeddings
   - `/models` - Model management
+
+Example chat completion:
+```bash
+# Non-streaming request
+curl -X POST http://localhost:8000/ollama/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "llama2",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# Streaming request
+curl -X POST http://localhost:8000/ollama/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "llama2",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
+
+List available models:
+```bash
+curl http://localhost:8000/ollama/v1/models \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
 
 #### OpenAI Compatibility
 
 - `/openai/v1/*` - OpenAI-compatible endpoints
-  - `/chat/completions` - GPT-compatible chat
+  - `/chat/completions` - GPT-compatible chat (streaming supported)
   - `/completions` - Text completions
   - `/embeddings` - Text embeddings
+
+The OpenAI-compatible endpoints follow the same API format as OpenAI's API:
+```bash
+# Chat completion
+curl -X POST http://localhost:8000/openai/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# Model mapping
+gpt-3.5-turbo -> llama2
+gpt-4 -> llama2:70b
+```
 
 ## Development
 

@@ -53,6 +53,7 @@ logs/
 
 # Redis
 dump.rdb
+*.rdb
 
 # Environment variables
 .env
@@ -89,9 +90,10 @@ db.sqlite3
 media/
 
 # Configuration files with sensitive data
-config/db_password.dev
-config/jwt_secret.dev
-config/config.dev.yaml
+config/db_password.*
+config/jwt_secret.*
+config/*.dev.yaml
+config/*.local.yaml
 
 # RPM build files
 rpmbuild/
@@ -104,10 +106,12 @@ SPECS/
 
 # Systemd
 *.service.d/
+systemd/*.local
 
 # Local data
 instance/
 uploads/
+data/
 
 # Cache
 .cache/
@@ -131,3 +135,8 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 *.lnk
+
+# Service runtime files
+*.pid
+*.socket
+*.sock

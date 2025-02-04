@@ -7,6 +7,9 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
 from .config import settings
+from .redis import get_redis
+
+__all__ = ['get_db', 'get_redis', 'db_transaction', 'init_db', 'drop_db', 'reset_db', 'get_engine', 'get_base', 'get_session_class']
 
 # Create database engine
 engine = create_engine(

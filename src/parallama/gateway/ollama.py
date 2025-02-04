@@ -18,7 +18,7 @@ class OllamaGateway:
             config: Gateway configuration
         """
         self.config = config
-        self.ollama_url = f"{config.host}:{config.port}/api".rstrip("/")
+        self.ollama_url = f"{config.host.rstrip('/')}:{config.port}/api"
         print(f"DEBUG: Initialized OllamaGateway with URL: {self.ollama_url}")
         self.model_mappings = {}  # Ollama doesn't need model mappings
         self.client = httpx.AsyncClient(timeout=60.0)
@@ -46,6 +46,9 @@ class OllamaGateway:
         """
         # Handle GET requests differently
         if request.method == "GET":
+            # Map /models to /tags for Ollama compatibility
+            if request.url.path.endswith("/models"):
+                request.scope["path"] = request.url.path.replace("/models", "/tags")
             return {}
             
         # For POST/PUT requests, transform the body

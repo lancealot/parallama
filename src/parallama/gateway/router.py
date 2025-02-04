@@ -124,6 +124,12 @@ async def route_request(
                 
                 # Determine the method and endpoint
                 method = request.method.lower()
+                # Map endpoints for Ollama compatibility
+                if gateway_type == "ollama":
+                    if path == "models":
+                        path = "tags"
+                    elif path == "chat/completions":
+                        path = "chat"
                 endpoint = f"{gateway.ollama_url}/{path}"
                 
                 print(f"DEBUG: Gateway URL base: {gateway.ollama_url}")
@@ -165,13 +171,53 @@ async def route_request(
                 
                 # Transform non-streaming response
                 try:
-                    # Fix malformed JSON by replacing missing commas
-                    text = response.text.replace('""', '","')
-                    text = text.replace('"}{"', '"},{"')
-                    response_data = json.loads(text)
-                    print(f"DEBUG: Parsed JSON: {json.dumps(response_data, indent=2)}")
-                    return await gateway.transform_response(response_data)
-                except json.JSONDecodeError as e:
+                    # Handle Ollama's chat response which comes as multiple JSON objects
+                    if gateway_type == "ollama" and path == "chat":
+                        # Get the last complete message (the one with done=true)
+                        lines = response.text.strip().split('\n')
+                        for line in reversed(lines):
+                            try:
+                                data = json.loads(line)
+                                if data.get("done", False):
+                                    # Combine all message content
+                                    content = ""
+                                    for msg_line in lines:
+                                        try:
+                                            msg_data = json.loads(msg_line)
+                                            if not msg_data.get("done", False):
+                                                content += msg_data.get("message", {}).get("content", "")
+                                        except json.JSONDecodeError:
+                                            continue
+                                    return JSONResponse(content={
+                                        "id": data.get("id", ""),
+                                        "object": "chat.completion",
+                                        "created": data.get("created_at"),
+                                        "model": data.get("model"),
+                                        "choices": [{
+                                            "index": 0,
+                                            "message": {
+                                                "role": "assistant",
+                                                "content": content
+                                            },
+                                            "finish_reason": data.get("done_reason", "stop")
+                                        }],
+                                        "usage": {
+                                            "prompt_tokens": data.get("prompt_eval_count", 0),
+                                            "completion_tokens": data.get("eval_count", 0),
+                                            "total_tokens": (data.get("prompt_eval_count", 0) + data.get("eval_count", 0))
+                                        }
+                                    })
+                            except json.JSONDecodeError:
+                                continue
+                        raise ValueError("No complete response found")
+                    else:
+                        # For other endpoints, handle as before
+                        text = response.text.replace('""', '","')
+                        text = text.replace('"}{"', '"},{"')
+                        response_data = json.loads(text)
+                        print(f"DEBUG: Parsed JSON: {json.dumps(response_data, indent=2)}")
+                        return await gateway.transform_response(response_data)
+                except (json.JSONDecodeError, ValueError) as e:
                     print(f"DEBUG: JSON parse error: {str(e)}")
                     return await gateway.handle_error(e)
                 

@@ -42,11 +42,12 @@
 - [ ] Connection pooling
 
 ### API Enhancements
-- [ ] Model management API
+- [x] Model management API
 - [ ] Batch processing
-- [ ] Streaming responses
+- [x] Streaming responses
 - [ ] Request validation
 - [ ] Response caching
+- [x] OpenAI compatibility layer
 
 ### Security
 - [ ] API key rotation
