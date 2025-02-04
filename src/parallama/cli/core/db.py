@@ -2,8 +2,8 @@
 from sqlalchemy.orm import Session
 from redis import Redis
 
-from parallama.core.database import SessionLocal
-from parallama.core.redis import redis_pool
+from parallama.core.database import get_db as get_core_db
+from parallama.core.redis import get_redis as get_core_redis
 
 # Global session objects
 _db_session: Session = None
@@ -14,10 +14,10 @@ def init_db():
     global _db_session, _redis_client
     
     # Create database session
-    _db_session = SessionLocal()
+    _db_session = next(get_core_db())
     
     # Create Redis client
-    _redis_client = Redis(connection_pool=redis_pool)
+    _redis_client = next(get_core_redis())
 
 def get_db() -> Session:
     """Get the current database session."""

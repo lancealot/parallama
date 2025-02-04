@@ -69,6 +69,10 @@ Thumbs.db
 *.so
 *.dll
 *.dylib
+*.rpm
+*.deb
+*.tar.gz
+*.zip
 
 # Documentation
 docs/_build/
@@ -87,3 +91,44 @@ media/
 # Configuration files with sensitive data
 config/db_password.dev
 config/jwt_secret.dev
+config/config.dev.yaml
+
+# RPM build files
+rpmbuild/
+RPMS/
+SRPMS/
+BUILD/
+BUILDROOT/
+SOURCES/
+SPECS/
+
+# Systemd
+*.service.d/
+
+# Local data
+data/
+instance/
+uploads/
+
+# Cache
+.cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Editor specific
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+.project
+.settings/
+.classpath
+.factorypath
+
+# OS specific
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk

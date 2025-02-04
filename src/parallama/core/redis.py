@@ -1,22 +1,17 @@
 """Redis client configuration and connection management."""
 
 from typing import Generator
-
 import redis
 from redis import Redis
-
-from .config import config
+from .config import settings
 
 # Create Redis connection pool
-redis_pool = redis.ConnectionPool(
-    host=config.redis.host,
-    port=config.redis.port,
-    db=config.redis.db,
-    password=config.redis.password,
+redis_pool = redis.ConnectionPool.from_url(
+    settings.redis.url,
     decode_responses=True,  # Automatically decode responses to strings
-    max_connections=config.redis.max_connections,
-    socket_timeout=config.redis.socket_timeout,
-    socket_connect_timeout=config.redis.connect_timeout,
+    max_connections=settings.redis.max_connections,
+    socket_timeout=settings.redis.socket_timeout,
+    socket_connect_timeout=settings.redis.connect_timeout,
     retry_on_timeout=True
 )
 

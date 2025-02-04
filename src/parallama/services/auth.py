@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
+import os
 import jwt
 from uuid import UUID
 
@@ -30,7 +31,7 @@ class AuthService:
         self.db = db
         self.redis = redis
         self.role_service = RoleService(db)
-        self.secret_key = "your-secret-key"  # TODO: Move to config
+        self.secret_key = os.getenv('PARALLAMA_JWT_SECRET', 'development-secret-key')
         self.token_expiry = timedelta(hours=1)
         self.refresh_token_expiry = timedelta(days=30)
 

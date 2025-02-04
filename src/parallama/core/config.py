@@ -1,6 +1,6 @@
 """Application configuration."""
 
-from datetime import timedelta
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -16,20 +16,10 @@ class AuthConfig(BaseModel):
     refresh_token_reuse_window: int = Field(default=60)
     password_hash_rounds: int = Field(default=12)
 
-    @property
-    def access_token_expires_delta(self) -> timedelta:
-        """Get access token expiration delta."""
-        return timedelta(minutes=self.access_token_expire_minutes)
-
-    @property
-    def refresh_token_expires_delta(self) -> timedelta:
-        """Get refresh token expiration delta."""
-        return timedelta(days=self.refresh_token_expire_days)
-
 
 class DatabaseConfig(BaseModel):
     """Database configuration."""
-    url: str = Field(default="postgresql://localhost/parallama")
+    url: str = Field(default=os.getenv('PARALLAMA_DB_URL', "postgresql://parallama:development@localhost:5432/parallama"))
     pool_size: int = Field(default=5)
     max_overflow: int = Field(default=10)
     pool_timeout: int = Field(default=30)
@@ -39,13 +29,39 @@ class DatabaseConfig(BaseModel):
 
 class RedisConfig(BaseModel):
     """Redis configuration."""
-    host: str = Field(default="localhost")
-    port: int = Field(default=6379)
-    db: int = Field(default=0)
-    password: Optional[str] = Field(default=None)
+    url: str = Field(default=os.getenv('PARALLAMA_REDIS_URL', "redis://localhost:6379/0"))
     max_connections: int = Field(default=10)
     socket_timeout: int = Field(default=5)
     connect_timeout: int = Field(default=5)
+
+    @property
+    def host(self) -> str:
+        """Get Redis host from URL."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.url)
+        return parsed.hostname or "localhost"
+    
+    @property
+    def port(self) -> int:
+        """Get Redis port from URL."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.url)
+        return parsed.port or 6379
+    
+    @property
+    def db(self) -> int:
+        """Get Redis database from URL."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.url)
+        path = parsed.path.lstrip('/')
+        return int(path) if path else 0
+    
+    @property
+    def password(self) -> Optional[str]:
+        """Get Redis password from URL."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.url)
+        return parsed.password
 
 
 class GatewayConfig(BaseModel):
@@ -71,11 +87,13 @@ class OpenAIPerformanceConfig(BaseModel):
     max_retries: int = Field(default=3)
     batch_size: int = Field(default=10)
 
+
 class TokenCounterConfig(BaseModel):
     """Token counter configuration."""
     enabled: bool = Field(default=True)
     cache_size: int = Field(default=1000)
     cache_ttl: int = Field(default=3600)
+
 
 class OpenAIConfig(BaseModel):
     """OpenAI compatibility gateway configuration."""
@@ -127,8 +145,15 @@ def load_settings(config_path: Optional[Path] = None) -> None:
         settings = Settings.parse_file(config_path)
     
     # Override with environment variables
-    # TODO: Implement environment variable loading
-    pass
+    if os.getenv('PARALLAMA_JWT_SECRET'):
+        settings.auth.jwt_secret_key = os.getenv('PARALLAMA_JWT_SECRET')
+    
+    if os.getenv('PARALLAMA_DB_URL'):
+        settings.database.url = os.getenv('PARALLAMA_DB_URL')
+    
+    if os.getenv('PARALLAMA_REDIS_URL'):
+        settings.redis.url = os.getenv('PARALLAMA_REDIS_URL')
+
 
 # Initialize settings
 load_settings()

@@ -2,19 +2,24 @@
 
 from contextlib import contextmanager
 from typing import Generator
-import redis
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# Database configuration
-SQLALCHEMY_DATABASE_URL = "postgresql://parallama:development@localhost:5432/parallama"
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from .config import settings
 
-# Redis configuration
-REDIS_URL = "redis://localhost:6379/0"
-redis_client = redis.from_url(REDIS_URL)
+# Create database engine
+engine = create_engine(
+    settings.database.url,
+    pool_size=settings.database.pool_size,
+    max_overflow=settings.database.max_overflow,
+    pool_timeout=settings.database.pool_timeout,
+    pool_recycle=settings.database.pool_recycle,
+    echo=settings.database.echo_sql
+)
+
+# Create session factory
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base class for SQLAlchemy models
 Base = declarative_base()
@@ -30,17 +35,6 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-
-def get_redis() -> Generator[redis.Redis, None, None]:
-    """Get Redis client.
-    
-    Yields:
-        redis.Redis: Redis client
-    """
-    try:
-        yield redis_client
-    finally:
-        redis_client.close()
 
 @contextmanager
 def db_transaction() -> Generator[Session, None, None]:
@@ -100,11 +94,3 @@ def get_session_class():
         sessionmaker: SQLAlchemy session class
     """
     return SessionLocal
-
-def get_redis_client():
-    """Get Redis client.
-    
-    Returns:
-        redis.Redis: Redis client
-    """
-    return redis_client

@@ -1,272 +1,92 @@
-![alt_text](https://github.com/lancealot/parallama/blob/main/parallama.png?raw=true)
-
 # Parallama
 
-Parallama is a multi-user authentication and access management service for Ollama. It provides a secure API gateway that enables multiple users to access Ollama services over a network with individual API keys, rate limiting, and usage tracking.
+Multi-user authentication and access management service for Ollama.
 
 ## Features
 
-### API Gateway Support
-- Multiple API compatibility modes:
-  - Native Ollama API (/ollama/v1)
-  - OpenAI-compatible API (/openai/v1)
-    * Chat and completion endpoints
-    * Token counting with cache
-    * Demo endpoints implemented:
-      - Embeddings (vector generation)
-      - Edits (text transformations)
-      - Moderations (content analysis)
-    * Production integrations in development
-  - Extensible framework for future API types
-- API discovery and status monitoring
-- Per-gateway rate limiting and usage tracking
-- Wildcard gateway support for shared limits
-- Token accumulation tracking
-
-### Authentication & Security
-- JWT-based authentication with refresh tokens
-  - Automatic token rotation
-  - Token reuse detection
-  - Rate limiting
-  - Chain revocation
-- API key management with automatic rotation
-- Role-based access control (RBAC)
-  - Flexible permission system
-  - Role hierarchy (admin, premium, basic)
-  - Per-gateway permissions
-  - Role expiration support
-  - Comprehensive test coverage
-- Secure password and token handling
-- Gateway-specific security headers
-- Comprehensive test coverage for all security features
-
-### Core Features
-- REST API for authenticated access to Ollama services
-- Advanced rate limiting:
-  - Per-gateway, user, and model limits
-  - Token and request counting
-  - Hourly and daily limits
-  - Wildcard gateway support
-  - Token accumulation tracking
-- Detailed usage tracking and reporting
-- Command-line interface for system management
-- Systemd service integration
-- Prometheus metrics and Grafana dashboards
-
-### Storage & Caching
-- PostgreSQL backend for persistent storage
-- Redis for rate limiting and token management
-- Connection pooling and query optimization
+- **Multi-User Support**: Create and manage multiple user accounts with different roles and permissions
+- **API Key Management**: Generate and manage API keys for secure access
+- **Rate Limiting**: Configure per-user rate limits to control API usage
+- **Usage Tracking**: Monitor and analyze API usage patterns
+- **Ollama Gateway**: Secure proxy to Ollama API endpoints
+- **OpenAI Compatibility**: OpenAI-compatible API endpoints that map to Ollama models
 
 ## Requirements
 
-- RHEL 9 or compatible
-- Python 3.9+
-- PostgreSQL 13+
-- Redis 5+
+- Python 3.9 or higher
+- PostgreSQL 13 or higher
+- Redis 5.0 or higher
 - Ollama
-- podman
-- podman-compose
 
 ## Quick Start
 
-1. Install dependencies:
+1. Install the package:
 ```bash
-sudo dnf install postgresql-server redis ollama
+sudo dnf install parallama-0.1.0-1.el9.x86_64.rpm
 ```
 
-2. Install Parallama:
+2. Start the service:
 ```bash
-sudo dnf install parallama
+sudo systemctl start parallama
+sudo systemctl enable parallama
 ```
 
-3. Initialize and start services:
+3. Create a user:
 ```bash
-sudo systemctl enable --now postgresql redis ollama parallama
+parallama-cli user create myuser --role basic
 ```
 
-4. Create your first user and API key:
+4. Create an API key:
 ```bash
-# Create a basic user
-parallama-cli user create myuser
-
-# Create an admin user with premium role
-parallama-cli user create adminuser --admin --role premium
-
-# Generate an API key
-parallama-cli key generate myuser --description "Development key"
-
-# List API keys
-parallama-cli key list --username myuser
-
-# Revoke an API key
-parallama-cli key revoke <key-id>
-
-# List users
-parallama-cli user list
-
-# Get user info
-parallama-cli user info myuser
-
-# Update user
-parallama-cli user update myuser --role premium --admin
-
-# Delete user
-parallama-cli user delete myuser
-
-# Manage rate limits
-parallama-cli ratelimit set myuser ollama --token-hourly 1000 --token-daily 10000
-parallama-cli ratelimit get myuser [gateway_type]
-parallama-cli ratelimit reset myuser ollama
-
-# View usage information
-parallama-cli usage list myuser [--gateway ollama] [--days 7] [--model llama2]
-parallama-cli usage summary myuser [--gateway ollama] [--days 30]
-parallama-cli usage export myuser json|csv [--output file.json] [--gateway ollama] [--model llama2]
+parallama-cli key create USER_ID --name "My API Key"
 ```
 
-5. Test the API:
+5. Use the API:
 ```bash
-# Using native Ollama API
-curl http://localhost:8000/ollama/v1/models \
-  -H "Authorization: Bearer your-api-key"
-
-# Using OpenAI compatibility mode
-curl http://localhost:8000/openai/v1/models \
-  -H "Authorization: Bearer your-api-key"
-
-# Using OpenAI chat completion
-curl http://localhost:8000/openai/v1/chat/completions \
-  -H "Authorization: Bearer your-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-3.5-turbo",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "llama2", "messages": [{"role": "user", "content": "Hello!"}]}' \
+     http://localhost:8000/ollama/v1/chat/completions
 ```
 
-## Installation
+## Documentation
 
-This project can be installed via RPM package:
-
-```bash
-sudo dnf install parallama
-```
-
-See USAGE.md for detailed setup and configuration instructions.
+- [Usage Guide](USAGE.md) - Detailed usage instructions
+- [Project Structure](STRUCTURE.md) - Code organization and architecture
+- [Project Plan](projectplan.md) - Development roadmap and plans
 
 ## Development
 
-This project uses a src-layout Python package structure. For detailed information about the project structure, components, and development conventions, see [STRUCTURE.md](STRUCTURE.md).
-
-### Development Setup
-
 1. Clone the repository:
 ```bash
-git clone https://github.com/lancealot/parallama.git
+git clone https://github.com/yourusername/parallama.git
 cd parallama
 ```
 
-2. Create a virtual environment:
+2. Create virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 ```
 
-3. Install development dependencies:
+3. Install dependencies:
 ```bash
-pip install -e ".[dev]"
+pip install -e .
 ```
 
-4. Start development services:
+4. Run development server:
 ```bash
-podman-compose up -d  # Starts PostgreSQL and Redis
+parallama-cli serve start --reload --config config/config.dev.yaml
 ```
 
-5. Initialize the database:
-```bash
-alembic upgrade head  # Applies all database migrations
-```
+## Contributing
 
-6. Run development server:
-```bash
-python scripts/run_dev.py
-```
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
 
-7. Run tests:
-```bash
-pytest tests/  # Run all tests
-pytest tests/ -v  # Run with verbose output
-pytest tests/test_auth_service.py  # Run specific test file
-```
+## License
 
-### Project Structure
-
-The project follows a clean, modular structure:
-- `src/parallama/` - Main package source code
-  * `api/` - FastAPI application and routes
-  * `core/` - Core functionality and configuration
-  * `db/` - Database connection and session management
-  * `middleware/` - Authentication and authorization middleware
-  * `models/` - SQLAlchemy database models
-  * `services/` - Business logic implementation
-- `tests/` - Comprehensive test suite
-- `alembic/` - Database migrations
-- `config/` - Configuration files
-- `scripts/` - Development and utility scripts
-
-See [STRUCTURE.md](STRUCTURE.md) for complete documentation of the project structure.
-
-### Current Status
-
-#### Completed Features
-- Authentication Service with JWT and API keys
-- Role-Based Access Control (RBAC)
-- Database Models and Migrations
-- Authentication Middleware
-- Rate Limiting Service
-  * Per-gateway and shared limits
-  * Token accumulation tracking
-  * Redis integration with mocking support
-  * Comprehensive test coverage
-- Ollama Gateway Implementation
-- Usage Tracking and Logging
-- Comprehensive Test Coverage
-
-#### In Progress
-1. OpenAI Gateway Enhancements
-   - Core functionality implemented:
-     * Model mapping and discovery
-     * Request/response transformation
-     * Streaming support
-     * Token counting and tracking with cache
-     * Enhanced error handling
-     * Connection pooling
-     * Test coverage
-   - Additional API endpoints:
-     * /models endpoint ✓
-     * /embeddings endpoint (demo implementation) ✓
-     * /edits endpoint (demo implementation) ✓
-     * /moderations endpoint (demo implementation) ✓
-     * Production integrations in progress:
-       - Embeddings with actual model calls
-       - Edits with LLM integration
-       - Moderations with content analysis model
-   - Performance optimizations:
-     * Connection pooling ✓
-     * Token counting cache ✓
-     * Streaming optimizations ✓
-     * Request batching (planned)
-     * Memory optimizations (planned)
-
-2. Usage Analytics Dashboard
-   - Data collection implemented
-   - Dashboard UI in development
-   - Analytics API design
-
-3. Deployment Documentation
-   - Installation guide in progress
-   - Configuration examples
-   - Production deployment best practices
-
-See [NEXT_SESSION.md](NEXT_SESSION.md) for detailed development planning.
+MIT License - see [LICENSE](LICENSE) for details
