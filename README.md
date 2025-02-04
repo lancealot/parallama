@@ -65,18 +65,33 @@ git clone https://github.com/yourusername/parallama.git
 cd parallama
 ```
 
-2. Create virtual environment:
+2. Install system dependencies:
+```bash
+sudo dnf install postgresql postgresql-server redis
+sudo postgresql-setup --initdb
+sudo systemctl start postgresql redis
+sudo systemctl enable postgresql redis
+```
+
+3. Create virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-3. Install dependencies:
+4. Install package dependencies:
 ```bash
 pip install -e .
 ```
 
-4. Run development server:
+5. Configure development database:
+```bash
+sudo -u postgres createuser parallama
+sudo -u postgres createdb parallama_dev
+sudo -u postgres psql -c "ALTER USER parallama WITH PASSWORD 'development';"
+```
+
+6. Run development server:
 ```bash
 parallama-cli serve start --reload --config config/config.dev.yaml
 ```

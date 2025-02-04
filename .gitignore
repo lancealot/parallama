@@ -106,7 +106,6 @@ SPECS/
 *.service.d/
 
 # Local data
-data/
 instance/
 uploads/
 

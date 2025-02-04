@@ -59,8 +59,7 @@ parallama/
 ├── README.md                # Project overview
 ├── USAGE.md                 # Usage documentation
 ├── parallama.spec           # RPM spec file
-├── pyproject.toml           # Project metadata
-└── setup.py                 # Package configuration
+└── pyproject.toml           # Project metadata
 ```
 
 ## Component Details
@@ -101,19 +100,26 @@ parallama/
 - Rate limiting
 - Usage tracking
 
+### System Services (`systemd/`)
+- Systemd service configuration
+- Service dependencies
+- Runtime directories
+- Security settings
+
 ## Key Files
 
 ### Configuration
 - `config/config.yaml`: Example configuration file
 - `config/config.dev.yaml`: Development configuration
 - `src/parallama/core/config.py`: Configuration management
+- `systemd/parallama.service`: Service configuration
 
 ### Entry Points
 - `src/parallama/cli/__init__.py`: CLI entry point
 - `src/parallama/api/app.py`: API entry point
 
 ### Package Management
-- `setup.py`: Package configuration
+- `pyproject.toml`: Project metadata and dependencies
 - `parallama.spec`: RPM package specification
 
 ### Documentation
@@ -129,18 +135,27 @@ parallama/
    - Add CLI commands in `cli/commands/`
    - Update tests in `tests/`
 
-2. Configuration:
+2. System Services:
+   - PostgreSQL for database
+   - Redis for rate limiting and caching
+   - Ollama for LLM inference
+   - Parallama service for API gateway
+
+3. Configuration:
    - Development: `config/config.dev.yaml`
    - Production: `/etc/parallama/config.yaml`
    - Environment variables override config
+   - Service configuration in systemd files
 
-3. Testing:
+4. Testing:
    - Unit tests in `tests/`
-   - Run with pytest
-   - CI/CD integration
+   - Integration tests with system services
+   - Service health checks
+   - API endpoint testing
 
-4. Deployment:
+5. Deployment:
    - Build RPM package
-   - Install dependencies
-   - Configure systemd service
+   - Install system dependencies
+   - Configure system services
    - Initialize database
+   - Deploy service configuration

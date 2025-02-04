@@ -2,27 +2,33 @@
 
 ## Installation
 
-### From RPM Package
+### Production Installation
 
-1. Install the RPM package:
+1. Install required system services:
+```bash
+sudo dnf install postgresql postgresql-server redis
+sudo postgresql-setup --initdb
+```
+
+2. Install the RPM package:
 ```bash
 sudo dnf install parallama-0.1.0-1.el9.x86_64.rpm
 ```
 
-2. Configure PostgreSQL:
+3. Configure PostgreSQL:
 ```bash
 sudo -u postgres createuser parallama
 sudo -u postgres createdb parallama
 sudo -u postgres psql -c "ALTER USER parallama WITH PASSWORD '$(sudo cat /etc/parallama/db_password)';"
 ```
 
-3. Start required services:
+4. Start required services:
 ```bash
 sudo systemctl start postgresql redis ollama
 sudo systemctl enable postgresql redis ollama
 ```
 
-4. Start Parallama service:
+5. Start Parallama service:
 ```bash
 sudo systemctl start parallama
 sudo systemctl enable parallama
@@ -140,22 +146,38 @@ curl -H "Authorization: Bearer YOUR_API_KEY" http://localhost:8000/ollama/v1/cha
 
 ### Local Setup
 
-1. Create virtual environment:
+1. Install system dependencies:
+```bash
+sudo dnf install postgresql postgresql-server redis
+sudo postgresql-setup --initdb
+sudo systemctl start postgresql redis
+sudo systemctl enable postgresql redis
+```
+
+2. Create virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-2. Install dependencies:
+3. Install package dependencies:
 ```bash
 pip install -e .
 ```
 
-3. Create development config:
+4. Configure development database:
+```bash
+sudo -u postgres createuser parallama
+sudo -u postgres createdb parallama_dev
+sudo -u postgres psql -c "ALTER USER parallama WITH PASSWORD 'development';"
+```
+
+5. Create development config:
 ```bash
 cp config/config.yaml config/config.dev.yaml
 ```
 
-4. Run development server:
+6. Run development server:
 ```bash
 parallama-cli serve start --reload --config config/config.dev.yaml
+```

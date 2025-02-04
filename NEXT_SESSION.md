@@ -85,7 +85,7 @@
 1. Local Setup
    - [x] Development configuration
    - [x] Environment variables
-   - [ ] Docker compose
+   - [ ] System service configuration
    - [ ] Development tools
 
 2. Testing
