@@ -1,34 +1,17 @@
 [Unit]
 Description=Parallama API Gateway Service
-Documentation=https://github.com/yourusername/parallama
-After=network.target postgresql.service redis.service ollama.service
-Requires=postgresql.service redis.service ollama.service
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
 
 [Service]
-Type=notify
+Type=simple
 User=parallama
 Group=parallama
-RuntimeDirectory=parallama
-RuntimeDirectoryMode=0750
 Environment=PYTHONUNBUFFERED=1
-Environment=PARALLAMA_DB_URL=postgresql://parallama:$(cat /etc/parallama/db_password)@localhost:5432/parallama
-Environment=PARALLAMA_REDIS_URL=redis://localhost:6379/0
-Environment=PARALLAMA_JWT_SECRET=$(cat /etc/parallama/jwt_secret)
-ExecStart=/usr/bin/parallama-cli serve start --workers 4
+EnvironmentFile=-/etc/parallama/environment
+ExecStart=/usr/bin/parallama-cli serve --config /etc/parallama/config.yaml
 Restart=always
 RestartSec=5
-TimeoutStartSec=30
-TimeoutStopSec=30
-
-# Security settings
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=true
-PrivateTmp=true
-PrivateDevices=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include setup.py
+include MANIFEST.in
+include systemd/parallama.service
+include config/config.yaml
+recursive-include src/parallama *
+recursive-include tests *

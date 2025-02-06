@@ -1,58 +1,62 @@
-from fastapi import FastAPI
+"""FastAPI application."""
+
+import logging
+from typing import Dict, List, Optional
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from ..gateway.router import router as gateway_router
-from ..gateway import GatewayRegistry
-from ..gateway.ollama import OllamaGateway
-from ..gateway.openai import OpenAIGateway
-from ..core.config import Settings
+from ..core.config import get_settings
+from ..core.database import init_db
+from ..gateway.registry import GatewayRegistry
+from ..middleware.auth import AuthMiddleware
+from ..middleware.rate_limit import RateLimitMiddleware
 
-app = FastAPI(
-    title="Parallama",
-    description="Multi-user authentication and access management service for Ollama",
-    version="0.1.0"
-)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create FastAPI app
+app = FastAPI(title="Parallama API")
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Configure this properly for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize settings
-settings = Settings()
+# Add custom middleware
+app.add_middleware(AuthMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
-# Register gateways
-GatewayRegistry.register("ollama", OllamaGateway(settings.ollama))
-GatewayRegistry.register("openai", OpenAIGateway(settings.openai))
+# Initialize database
+init_db()
 
-# Include gateway router
-app.include_router(gateway_router)
+# Initialize gateway registry
+registry = GatewayRegistry()
 
-# Root endpoint for API discovery
+# Register routes
 @app.get("/")
-async def root():
-    """API discovery endpoint."""
-    return {
-        "name": "Parallama API Gateway",
-        "version": "1.0.0",
-        "gateways": {
-            "ollama": {
-                "base_path": "/ollama/v1",
-                "status": "active",
-                "features": ["text generation", "chat completion", "model management"]
-            },
-            "openai": {
-                "base_path": "/openai/v1",
-                "status": "active",
-                "features": ["text completion", "chat completion"],
-                "model_mappings": {
-                    "gpt-3.5-turbo": "llama2",
-                    "gpt-4": "llama2:70b"
-                }
-            }
-        }
-    }
+async def root() -> Dict[str, str]:
+    """Root endpoint."""
+    return {"message": "Welcome to Parallama API"}
+
+
+@app.get("/health")
+async def health() -> Dict[str, str]:
+    """Health check endpoint."""
+    return {"status": "healthy"}
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> Response:
+    """Global exception handler."""
+    logger.exception("Unhandled exception")
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal server error"},
+    )

@@ -1,99 +1,51 @@
-"""Database configuration and session management."""
+"""Database configuration."""
 
 from contextlib import contextmanager
-from typing import Generator
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
+import redis
 
-from .config import settings
-from .redis import get_redis
+from .config import get_settings
 
-__all__ = ['get_db', 'get_redis', 'db_transaction', 'init_db', 'drop_db', 'reset_db', 'get_engine', 'get_base', 'get_session_class']
-
-# Create database engine
-engine = create_engine(
-    settings.database.url,
-    pool_size=settings.database.pool_size,
-    max_overflow=settings.database.max_overflow,
-    pool_timeout=settings.database.pool_timeout,
-    pool_recycle=settings.database.pool_recycle,
-    echo=settings.database.echo_sql
-)
-
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Base class for SQLAlchemy models
+# Create base class for models
 Base = declarative_base()
 
-def get_db() -> Generator[Session, None, None]:
-    """Get database session.
+# Initialize these after settings are loaded
+engine = None
+SessionLocal = None
+redis_client = None
+
+
+def init_db():
+    """Initialize database connection."""
+    global engine, SessionLocal, redis_client
     
-    Yields:
-        Session: Database session
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    if engine is None:
+        engine = create_engine(get_settings().database.url)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        redis_client = redis.from_url(get_settings().redis.url)
+
+
+def get_db() -> Session:
+    """Get database session."""
+    if SessionLocal is None:
+        init_db()
+    return SessionLocal()
+
 
 @contextmanager
-def db_transaction() -> Generator[Session, None, None]:
-    """Context manager for database transactions.
-    
-    Yields:
-        Session: Database session
-        
-    Example:
-        with db_transaction() as db:
-            db.add(some_model)
-            db.commit()
-    """
-    db = SessionLocal()
+def db_session():
+    """Context manager for database sessions."""
+    db = get_db()
     try:
         yield db
-        db.commit()
-    except:
-        db.rollback()
-        raise
     finally:
         db.close()
 
-def init_db() -> None:
-    """Initialize database schema."""
-    Base.metadata.create_all(bind=engine)
 
-def drop_db() -> None:
-    """Drop all database tables."""
-    Base.metadata.drop_all(bind=engine)
-
-def reset_db() -> None:
-    """Reset database by dropping and recreating all tables."""
-    drop_db()
-    init_db()
-
-def get_engine():
-    """Get SQLAlchemy engine.
-    
-    Returns:
-        Engine: SQLAlchemy engine
-    """
-    return engine
-
-def get_base():
-    """Get SQLAlchemy base class.
-    
-    Returns:
-        DeclarativeMeta: SQLAlchemy base class
-    """
-    return Base
-
-def get_session_class():
-    """Get SQLAlchemy session class.
-    
-    Returns:
-        sessionmaker: SQLAlchemy session class
-    """
-    return SessionLocal
+def get_redis() -> redis.Redis:
+    """Get Redis client."""
+    if redis_client is None:
+        init_db()
+    return redis_client

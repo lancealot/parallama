@@ -24,7 +24,7 @@ wheels/
 venv/
 ENV/
 env/
-.env
+.env/
 
 # IDE
 .idea/
@@ -36,66 +36,39 @@ env/
 # Testing
 .coverage
 htmlcov/
-.pytest_cache/
 .tox/
+.pytest_cache/
 coverage.xml
 *.cover
-.hypothesis/
+
+# Distribution / packaging
+.Python
+*.tar.gz
+*.rpm
 
 # Logs
-logs/
 *.log
+logs/
 
-# Database
-*.db
-*.sqlite3
-*.sqlite
+# Local development
+config/config.dev.yaml
+.env.local
+.env.development
+.env.test
+.env.production
 
-# Redis
-dump.rdb
-*.rdb
-
-# Environment variables
-.env
-.env.*
-
-# System Files
+# System files
 .DS_Store
 Thumbs.db
 
-# Build artifacts
-*.pyc
-*.pyo
-*.pyd
-*.so
-*.dll
-*.dylib
-*.rpm
-*.deb
-*.tar.gz
-*.zip
+# Database
+*.sqlite3
+*.db
 
-# Documentation
-docs/_build/
-docs/generated/
+# Redis
+dump.rdb
 
-# Temporary files
-*.bak
-*.tmp
-*.temp
-
-# Local development
-local_settings.py
-db.sqlite3
-media/
-
-# Configuration files with sensitive data
-config/db_password.*
-config/jwt_secret.*
-config/*.dev.yaml
-config/*.local.yaml
-
-# RPM build files
+# RPM build
 rpmbuild/
 RPMS/
 SRPMS/
@@ -103,40 +76,3 @@ BUILD/
 BUILDROOT/
 SOURCES/
 SPECS/
-
-# Systemd
-*.service.d/
-systemd/*.local
-
-# Local data
-instance/
-uploads/
-data/
-
-# Cache
-.cache/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-
-# Editor specific
-.vscode/
-.idea/
-*.sublime-workspace
-*.sublime-project
-.project
-.settings/
-.classpath
-.factorypath
-
-# OS specific
-.DS_Store
-Thumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-*.lnk
-
-# Service runtime files
-*.pid
-*.socket
-*.sock

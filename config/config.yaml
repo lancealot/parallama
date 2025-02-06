@@ -1,67 +1,59 @@
+# Parallama Configuration
+
+# Server settings
 server:
-  host: 0.0.0.0
+  host: "127.0.0.1"
   port: 8000
   workers: 4
+  reload: false
+  log_level: "info"
 
+# Database settings
 database:
-  host: localhost
-  port: 5432
-  name: parallama
-  user: parallama
+  url: "postgresql://parallama:${DB_PASSWORD}@localhost/parallama"
+  pool_size: 5
+  max_overflow: 10
+  pool_timeout: 30
 
+# Redis settings
 redis:
-  host: localhost
-  port: 6379
-  db: 0
+  url: "redis://localhost:6379/0"
+  pool_size: 10
 
-authentication:
-  access_token_expire_minutes: 30
-  refresh_token_expire_days: 30
-  password_hash_rounds: 12
-  refresh_token_rate_limit: 5
-  refresh_token_reuse_window: 60
-  refresh_token_cleanup_interval: 3600
+# Authentication
+auth:
+  jwt_secret_file: "/etc/parallama/jwt_secret"
+  token_expiry: 3600  # 1 hour
+  refresh_token_expiry: 2592000  # 30 days
 
-api_gateways:
-  enabled:
-    - ollama
-    - openai
-  
-  discovery:
-    enabled: true
-    cache_ttl: 300
-    include_metrics: true
-  
+# Rate limiting
+rate_limit:
+  default_requests: 1000
+  default_window: 3600  # 1 hour
+  redis_prefix: "ratelimit:"
+
+# Gateway settings
+gateway:
   ollama:
-    host: http://localhost
-    port: 11434
-    base_path: /ollama/v1
-    default_model: llama2
+    url: "http://localhost:11434"
+    timeout: 300
+    max_tokens: 4096
   
-  openai:
-    base_path: /openai/v1
-    compatibility_mode: true
-    model_mappings:
-      gpt-3.5-turbo: llama2
-      gpt-4: llama2:70b
-    token_counter:
-      enabled: true
-      cache_size: 1000
-      cache_ttl: 3600
-    performance:
-      connection_pool_size: 100
-      request_timeout: 60
-      max_retries: 3
-      batch_size: 10
-    endpoints:
-      chat: true
-      completions: true
-      embeddings: false
-      edits: false
-      moderations: false
+  # Model mappings for OpenAI compatibility
+  model_map:
+    "gpt-3.5-turbo": "llama2"
+    "gpt-4": "llama2:70b"
 
+# Logging
 logging:
-  level: INFO
-  dir: /var/log/parallama
-  max_size: 100M
-  backup_count: 10
+  file: "/var/log/parallama/service.log"
+  level: "info"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  max_size: 10485760  # 10MB
+  backup_count: 5
+
+# Usage tracking
+usage:
+  enabled: true
+  storage_days: 30
+  redis_prefix: "usage:"

@@ -1,46 +1,36 @@
-"""Database session management for CLI commands."""
+"""Database utilities for CLI."""
+
+from contextlib import contextmanager
+from typing import Generator
+
 from sqlalchemy.orm import Session
-from redis import Redis
+import redis
 
+from parallama.core.database import init_db as init_core_db
 from parallama.core.database import get_db as get_core_db
-from parallama.core.redis import get_redis as get_core_redis
+from parallama.core.database import get_redis as get_core_redis
 
-# Global session objects
-_db_session: Session = None
-_redis_client: Redis = None
 
-def init_db():
-    """Initialize database and Redis connections."""
-    global _db_session, _redis_client
-    
-    # Create database session
-    _db_session = next(get_core_db())
-    
-    # Create Redis client
-    _redis_client = next(get_core_redis())
+def init_db() -> None:
+    """Initialize database connection."""
+    init_core_db()
 
-def get_db() -> Session:
-    """Get the current database session."""
-    global _db_session
-    if _db_session is None:
-        init_db()
-    return _db_session
 
-def get_redis() -> Redis:
-    """Get the current Redis client."""
-    global _redis_client
-    if _redis_client is None:
-        init_db()
-    return _redis_client
+def cleanup_db() -> None:
+    """Clean up database resources."""
+    pass
 
-def cleanup_db():
-    """Cleanup database and Redis connections."""
-    global _db_session, _redis_client
-    
-    if _db_session is not None:
-        _db_session.close()
-        _db_session = None
-    
-    if _redis_client is not None:
-        _redis_client.close()
-        _redis_client = None
+
+@contextmanager
+def get_db() -> Generator[Session, None, None]:
+    """Get database session."""
+    db = get_core_db()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_redis() -> redis.Redis:
+    """Get Redis client."""
+    return get_core_redis()
