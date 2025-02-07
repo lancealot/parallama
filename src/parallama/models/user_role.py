@@ -1,26 +1,28 @@
-"""User role model for managing roles and permissions."""
+"""Model for user roles."""
 
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import Column, String, DateTime, JSON
+from sqlalchemy import Column, String, Text
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from .base import BaseModel
 
 class UserRole(BaseModel):
-    """Model for storing user roles and permissions."""
+    """Model for storing user roles."""
 
     name = Column(String, unique=True, nullable=False)
-    permissions = Column(JSON, nullable=False, default=list)
-    description = Column(String)
+    description = Column(Text)
+    permissions = Column(ARRAY(String), nullable=False, default=list)
 
     # Relationships
-    users = relationship("User", back_populates="role")
+    role_assignments = relationship("RoleAssignment", back_populates="role", cascade="all, delete-orphan")
+    users = relationship("User", secondary="role_assignments", back_populates="roles", viewonly=True)
 
     def __init__(self, **kwargs):
-        """Initialize a new user role.
+        """Initialize a new role.
         
         Args:
             **kwargs: Role attributes
@@ -31,15 +33,12 @@ class UserRole(BaseModel):
         
         # Ensure permissions is a list
         if "permissions" in kwargs:
-            if not isinstance(kwargs["permissions"], list):
-                kwargs["permissions"] = list(kwargs["permissions"])
-        else:
-            kwargs["permissions"] = []
+            kwargs["permissions"] = list(kwargs["permissions"])
         
         super().__init__(**kwargs)
 
     def has_permission(self, permission: str) -> bool:
-        """Check if role has a specific permission.
+        """Check if role has permission.
         
         Args:
             permission: Permission to check
@@ -50,7 +49,7 @@ class UserRole(BaseModel):
         return permission in self.permissions
 
     def has_any_permission(self, permissions: List[str]) -> bool:
-        """Check if role has any of the specified permissions.
+        """Check if role has any of the permissions.
         
         Args:
             permissions: List of permissions to check
@@ -61,7 +60,7 @@ class UserRole(BaseModel):
         return any(p in self.permissions for p in permissions)
 
     def has_all_permissions(self, permissions: List[str]) -> bool:
-        """Check if role has all specified permissions.
+        """Check if role has all permissions.
         
         Args:
             permissions: List of permissions to check
@@ -72,22 +71,24 @@ class UserRole(BaseModel):
         return all(p in self.permissions for p in permissions)
 
     def add_permission(self, permission: str) -> None:
-        """Add a permission to the role.
+        """Add permission to role.
         
         Args:
             permission: Permission to add
         """
         if permission not in self.permissions:
             self.permissions.append(permission)
+            self.updated_at = datetime.now(timezone.utc)
 
     def remove_permission(self, permission: str) -> None:
-        """Remove a permission from the role.
+        """Remove permission from role.
         
         Args:
             permission: Permission to remove
         """
         if permission in self.permissions:
             self.permissions.remove(permission)
+            self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> dict:
         """Convert role to dictionary representation.
@@ -98,8 +99,8 @@ class UserRole(BaseModel):
         return {
             "id": self.id,
             "name": self.name,
-            "permissions": self.permissions,
             "description": self.description,
+            "permissions": self.permissions,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
@@ -110,4 +111,7 @@ class UserRole(BaseModel):
         Returns:
             str: String representation
         """
-        return f"UserRole(id={self.id}, name={self.name}, permissions={self.permissions})"
+        return (
+            f"UserRole(id={self.id}, name={self.name}, "
+            f"permissions={len(self.permissions)})"
+        )

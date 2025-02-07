@@ -8,6 +8,11 @@ import yaml
 from pydantic import BaseModel, Field
 
 
+class LoggingConfig(BaseModel):
+    """Logging configuration."""
+
+    level: str = "info"
+
 class ServerConfig(BaseModel):
     """Server configuration."""
 
@@ -36,6 +41,14 @@ class JWTConfig(BaseModel):
     expiry: int = 3600
 
 
+class AuthConfig(BaseModel):
+    """Authentication configuration."""
+
+    jwt: JWTConfig
+    allowed_users: List[str] = Field(default_factory=list)
+    admin_users: List[str] = Field(default_factory=list)
+
+
 class GatewayConfig(BaseModel):
     """Gateway configuration."""
 
@@ -57,7 +70,9 @@ class Settings(BaseModel):
     database: DatabaseConfig
     redis: RedisConfig
     jwt: JWTConfig
+    auth: AuthConfig
     gateways: GatewaysConfig
+    logging: LoggingConfig = LoggingConfig()
 
 
 # Global settings instance
@@ -85,4 +100,4 @@ def load_settings(config_path: Path) -> None:
 
 
 # Export functions for other modules to use
-__all__ = ["get_settings", "load_settings", "Settings"]
+__all__ = ["get_settings", "load_settings", "Settings", "AuthConfig"]

@@ -34,45 +34,30 @@ env/
 *~
 
 # Testing
+.pytest_cache/
 .coverage
 htmlcov/
 .tox/
-.pytest_cache/
+.nox/
 coverage.xml
 *.cover
+.hypothesis/
 
-# Distribution / packaging
-.Python
-*.tar.gz
-*.rpm
-
-# Logs
+# Development
 *.log
-logs/
-
-# Local development
+*.sqlite3
+*.db
+.env
+.env.*
+!.env.example
 config/config.dev.yaml
-.env.local
-.env.development
-.env.test
-.env.production
 
-# System files
+# System
 .DS_Store
 Thumbs.db
 
-# Database
-*.sqlite3
-*.db
-
-# Redis
-dump.rdb
-
-# RPM build
-rpmbuild/
-RPMS/
-SRPMS/
-BUILD/
-BUILDROOT/
-SOURCES/
-SPECS/
+# Project specific
+/data/
+/logs/
+.jwt_secret
+.db_password

@@ -43,18 +43,21 @@
 - [ ] Development database
 
 ### Testing Infrastructure
-- [ ] Fix existing tests
-- [ ] Add missing test coverage
-- [ ] Integration tests
-- [ ] Load tests
-- [ ] CI pipeline
+- [x] Fix role management tests
+- [x] Fix configuration tests
+- [x] Fix database tests
+- [ ] Add integration tests
+- [ ] Add load tests
+- [ ] Set up CI pipeline
 
 ### Code Quality
-- [ ] Black formatter
-- [ ] Flake8 linting
-- [ ] Mypy type checking
-- [ ] Pre-commit hooks
-- [ ] Code coverage reports
+- [x] Fix SQLAlchemy model relationships
+- [x] Improve configuration management
+- [ ] Add Black formatter
+- [ ] Add Flake8 linting
+- [ ] Add Mypy type checking
+- [ ] Add pre-commit hooks
+- [ ] Add code coverage reports
 
 ### Documentation
 - [ ] API documentation

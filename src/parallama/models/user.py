@@ -16,12 +16,11 @@ class User(BaseModel):
     username = Column(String, unique=True, nullable=False)
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    role_id = Column(String, ForeignKey("user_roles.id"))
     is_active = Column(Boolean, default=True)
     last_login = Column(DateTime(timezone=True))
 
     # Relationships
-    role = relationship("UserRole", back_populates="users")
+    role_assignments = relationship("RoleAssignment", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     rate_limits = relationship("GatewayRateLimit", back_populates="user", cascade="all, delete-orphan")
@@ -37,13 +36,59 @@ class User(BaseModel):
         if "password" in kwargs:
             kwargs["password_hash"] = self.hash_password(kwargs.pop("password"))
         
-        # Convert UUID to string for id and role_id
+        # Convert UUID to string for id
         if "id" in kwargs and isinstance(kwargs["id"], UUID):
             kwargs["id"] = str(kwargs["id"])
-        if "role_id" in kwargs and isinstance(kwargs["role_id"], UUID):
-            kwargs["role_id"] = str(kwargs["role_id"])
         
+        # Handle role assignment if role is provided
+        role = kwargs.pop("role", None)
         super().__init__(**kwargs)
+        if role:
+            self.role = role
+
+    @property
+    def roles(self) -> List["UserRole"]:
+        """Get user's active roles.
+        
+        Returns:
+            List[UserRole]: List of active roles
+        """
+        now = datetime.now(timezone.utc)
+        return [
+            assignment.role for assignment in self.role_assignments
+            if not assignment.expires_at or assignment.expires_at > now
+        ]
+
+    @property
+    def role(self) -> Optional["UserRole"]:
+        """Get user's primary role.
+        
+        Returns:
+            Optional[UserRole]: Primary role if any
+        """
+        roles = self.roles
+        return roles[0] if roles else None
+
+    @role.setter
+    def role(self, role: "UserRole") -> None:
+        """Set user's primary role.
+        
+        Args:
+            role: Role to set
+        """
+        from .role_assignment import RoleAssignment
+        
+        # Clear existing assignments
+        self.role_assignments = []
+        
+        # Create new assignment
+        if role:
+            assignment = RoleAssignment(
+                user_id=self.id,
+                role_id=role.id,
+                created_at=datetime.now(timezone.utc)
+            )
+            self.role_assignments.append(assignment)
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -95,7 +140,7 @@ class User(BaseModel):
         Returns:
             bool: True if user has permission, False otherwise
         """
-        return self.role and self.role.has_permission(permission)
+        return any(role.has_permission(permission) for role in self.roles)
 
     def has_any_permission(self, permissions: List[str]) -> bool:
         """Check if user has any of the specified permissions.
@@ -106,7 +151,7 @@ class User(BaseModel):
         Returns:
             bool: True if user has any permission, False otherwise
         """
-        return self.role and self.role.has_any_permission(permissions)
+        return any(role.has_any_permission(permissions) for role in self.roles)
 
     def has_all_permissions(self, permissions: List[str]) -> bool:
         """Check if user has all specified permissions.
@@ -117,7 +162,7 @@ class User(BaseModel):
         Returns:
             bool: True if user has all permissions, False otherwise
         """
-        return self.role and self.role.has_all_permissions(permissions)
+        return any(role.has_all_permissions(permissions) for role in self.roles)
 
     def to_dict(self, include_sensitive: bool = False) -> dict:
         """Convert user to dictionary representation.
@@ -132,7 +177,6 @@ class User(BaseModel):
             "id": self.id,
             "username": self.username,
             "email": self.email,
-            "role_id": self.role_id,
             "is_active": self.is_active,
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -142,9 +186,10 @@ class User(BaseModel):
         if include_sensitive:
             result["password_hash"] = self.password_hash
         
-        if self.role:
-            result["role"] = self.role.to_dict()
-            result["permissions"] = self.role.permissions
+        roles = self.roles
+        if roles:
+            result["roles"] = [role.to_dict() for role in roles]
+            result["permissions"] = list(set().union(*(role.permissions for role in roles)))
         
         return result
 
@@ -156,5 +201,5 @@ class User(BaseModel):
         """
         return (
             f"User(id={self.id}, username={self.username}, "
-            f"email={self.email}, role_id={self.role_id})"
+            f"email={self.email}, roles={len(self.roles)})"
         )

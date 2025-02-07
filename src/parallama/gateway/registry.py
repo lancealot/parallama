@@ -1,77 +1,116 @@
-from typing import Dict, Type, Optional
-from .base import LLMGateway
+"""Gateway registry for managing LLM gateways."""
+
+from typing import Dict, Optional, Type
+from fastapi import HTTPException
+
+from .base import BaseGateway
+from .config import GatewayConfig, OllamaConfig, OpenAIConfig
+from .ollama import OllamaGateway
+from .openai import OpenAIGateway
+from ..services.rate_limit import RateLimitService
 
 class GatewayRegistry:
-    """Registry for managing LLM gateway implementations.
-    
-    This class provides a central registry for all gateway implementations,
-    allowing them to be registered and retrieved by name. It uses a class-level
-    dictionary to store gateway implementations, making them globally accessible.
-    """
-    
-    _gateways: Dict[str, Type[LLMGateway]] = {}
-    _instances: Dict[str, LLMGateway] = {}
-    
-    @classmethod
-    def register(cls, name: str, gateway_class: Type[LLMGateway]) -> None:
-        """Register a new gateway implementation.
+    """Registry for managing LLM gateways."""
+
+    def __init__(self, rate_limit_service: Optional[RateLimitService] = None):
+        """Initialize gateway registry.
         
         Args:
-            name: Unique identifier for the gateway
-            gateway_class: The gateway class to register
+            rate_limit_service: Optional rate limiting service
+        """
+        self._rate_limit_service = rate_limit_service
+        self._gateways: Dict[str, BaseGateway] = {}
+        self._gateway_types: Dict[str, Type[BaseGateway]] = {
+            "ollama": OllamaGateway,
+            "openai": OpenAIGateway
+        }
+        self._config_types: Dict[str, Type[GatewayConfig]] = {
+            "ollama": OllamaConfig,
+            "openai": OpenAIConfig
+        }
+
+    def register_gateway_type(
+        self,
+        gateway_type: str,
+        gateway_class: Type[BaseGateway],
+        config_class: Type[GatewayConfig]
+    ) -> None:
+        """Register a new gateway type.
+        
+        Args:
+            gateway_type: Gateway type identifier
+            gateway_class: Gateway class
+            config_class: Configuration class
+        """
+        self._gateway_types[gateway_type] = gateway_class
+        self._config_types[gateway_type] = config_class
+
+    def get_gateway(self, gateway_type: str) -> BaseGateway:
+        """Get gateway instance.
+        
+        Args:
+            gateway_type: Gateway type identifier
+            
+        Returns:
+            BaseGateway: Gateway instance
             
         Raises:
-            ValueError: If a gateway with the given name is already registered
+            HTTPException: If gateway type is not supported
         """
-        if name in cls._gateways:
-            raise ValueError(f"Gateway '{name}' is already registered")
-        cls._gateways[name] = gateway_class
-    
-    @classmethod
-    def get_gateway_class(cls, name: str) -> Optional[Type[LLMGateway]]:
-        """Get a registered gateway class by name.
-        
-        Args:
-            name: The name of the gateway to retrieve
+        if gateway_type not in self._gateways:
+            if gateway_type not in self._gateway_types:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported gateway type: {gateway_type}"
+                )
             
-        Returns:
-            Optional[Type[LLMGateway]]: The gateway class if found, None otherwise
-        """
-        return cls._gateways.get(name)
-    
-    @classmethod
-    def get_gateway(cls, name: str) -> Optional[LLMGateway]:
-        """Get or create a gateway instance by name.
-        
-        This method implements a singleton pattern for gateway instances,
-        ensuring only one instance exists per gateway type.
-        
-        Args:
-            name: The name of the gateway to retrieve
+            # Create gateway instance
+            gateway_class = self._gateway_types[gateway_type]
+            config_class = self._config_types[gateway_type]
+            try:
+                config = config_class.from_env()
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Gateway configuration error: {str(e)}"
+                )
             
-        Returns:
-            Optional[LLMGateway]: The gateway instance if found, None otherwise
-        """
-        if name not in cls._instances:
-            gateway_class = cls.get_gateway_class(name)
-            if gateway_class:
-                cls._instances[name] = gateway_class()
-        return cls._instances.get(name)
-    
-    @classmethod
-    def list_gateways(cls) -> Dict[str, Type[LLMGateway]]:
-        """List all registered gateways.
+            self._gateways[gateway_type] = gateway_class(
+                config=config,
+                rate_limit_service=self._rate_limit_service
+            )
         
-        Returns:
-            Dict[str, Type[LLMGateway]]: Dictionary of gateway names and their classes
-        """
-        return cls._gateways.copy()
-    
+        return self._gateways[gateway_type]
+
+    async def cleanup(self) -> None:
+        """Cleanup all gateway instances."""
+        for gateway in self._gateways.values():
+            await gateway.cleanup()
+        self._gateways.clear()
+
+    # Class-level storage for gateways and types
+    _instance_gateways: Dict[str, BaseGateway] = {}
+    _instance_gateway_types: Dict[str, Type[BaseGateway]] = {
+        "ollama": OllamaGateway,
+        "openai": OpenAIGateway
+    }
+    _instance_config_types: Dict[str, Type[GatewayConfig]] = {
+        "ollama": OllamaConfig,
+        "openai": OpenAIConfig
+    }
+
     @classmethod
-    def clear(cls) -> None:
-        """Clear all registered gateways and instances.
-        
-        This is primarily useful for testing purposes.
-        """
-        cls._gateways.clear()
-        cls._instances.clear()
+    async def clear(cls) -> None:
+        """Clear all registered gateways."""
+        # This is a class method to allow clearing gateways in tests
+        for gateway in cls._instance_gateways.values():
+            await gateway.cleanup()
+        cls._instance_gateways.clear()
+        cls._instance_gateway_types = {
+            "ollama": OllamaGateway,
+            "openai": OpenAIGateway
+        }
+        cls._instance_config_types = {
+            "ollama": OllamaConfig,
+            "openai": OpenAIConfig
+        }

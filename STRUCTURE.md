@@ -39,9 +39,9 @@ parallama/
 │   │   ├── base.py          # Base model class
 │   │   ├── rate_limit.py    # Rate limit model
 │   │   ├── refresh_token.py # Refresh token model
-│   │   ├── role.py          # Role model
 │   │   ├── user.py          # User model
-│   │   └── user_role.py     # User-role association
+│   │   ├── user_role.py     # Role model
+│   │   └── role_assignment.py # User-role assignment model
 │   └── services/            # Business logic
 │       ├── api_key.py       # API key service
 │       ├── auth.py          # Authentication service
